@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PitchMirror — Meeting Mode</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/bubble.css?v=20261020i" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261020i" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261020i" />
+</head>
+<body class="mt-page">
+
+  <header class="mt-header">
+    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> PitchMirror</a>
+    <span class="mt-header-tag">Meeting Mode</span>
+    <nav class="mt-header-links">
+      <a href="/app">Practice app</a>
+      <a href="/app?view=history">History</a>
+      <a href="/guide">How to try it</a>
+      <span id="tester-slot"></span>
+    </nav>
+  </header>
+
+  <main class="mt-main">
+
+    <!-- Setup -->
+    <section id="mt-setup" class="mt-card mt-setup">
+      <h1 class="mt-title">Your coach, inside any meeting</h1>
+      <p class="mt-sub">
+        A small floating coach bubble sits on top of Zoom, Google Meet, Teams or any call.
+        It listens to you and shows silent nudges only you can see. When the meeting ends,
+        the full transcript and review are saved to your History.
+      </p>
+
+      <div class="mt-fields">
+        <label class="mt-field">
+          <span>What's the meeting?</span>
+          <select id="mt-mode">
+            <option value="interview">Job interview</option>
+            <option value="pitch">Investor pitch</option>
+            <option value="sales_demo">Sales call / demo</option>
+            <option value="presentation">Presentation</option>
+            <option value="general">Other conversation</option>
+          </select>
+        </label>
+        <label class="mt-field">
+          <span>Where is it?</span>
+          <select id="mt-platform">
+            <option value="zoom">Zoom</option>
+            <option value="google_meet">Google Meet</option>
+            <option value="teams">Microsoft Teams</option>
+            <option value="webex">Webex</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="mt-field">
+          <span>Coach style</span>
+          <select id="mt-persona">
+            <option value="coach">Professional Coach</option>
+            <option value="mentor">Supportive Mentor</option>
+            <option value="vc">Brutal VC</option>
+          </select>
+        </label>
+        <label class="mt-toggle">
+          <input id="mt-camera" type="checkbox" checked />
+          <span>Use my camera to track eye contact</span>
+        </label>
+      </div>
+
+      <details class="mt-brief" id="mt-brief">
+        <summary><b>Pre-call brief</b> (optional) — tell the coach what this meeting is about</summary>
+        <div class="mt-brief-grid">
+          <label class="mt-field mt-field-wide">
+            <span>Context notes</span>
+            <textarea id="mt-notes" rows="4" maxlength="6000"
+              placeholder="Client: Acme Retail (Priya, Head of Ops). Agenda: pricing for 40 stores, pilot timeline. They use spreadsheets today; worried about setup time."></textarea>
+          </label>
+          <label class="mt-field mt-field-wide">
+            <span>Points to cover <em>(one per line — leave empty and the coach picks them from your notes)</em></span>
+            <textarea id="mt-points" rows="4" maxlength="2000"
+              placeholder="Per-store pricing and volume discount&#10;30-day pilot offer&#10;Setup takes under a day&#10;Agree next meeting date"></textarea>
+          </label>
+          <label class="mt-field">
+            <span>Planned length</span>
+            <select id="mt-minutes">
+              <option value="0">Not sure</option>
+              <option value="15">15 min</option>
+              <option value="30" selected>30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+              <option value="90">90 min</option>
+            </select>
+          </label>
+          <p class="mt-brief-help">The coach ticks off points as you cover them and reminds you of anything missed near the end.</p>
+        </div>
+      </details>
+
+      <div class="mt-other">
+        <div class="mt-other-text">
+          <div><b>Hear the other person too</b> (recommended)</div>
+          <span>So the coach knows the questions you're answering. Pick your meeting's browser tab and tick
+          “Share tab audio”, or pick your whole screen with “Share system audio” on Windows.</span>
+        </div>
+        <button id="mt-other-btn" type="button" class="mt-btn mt-btn-ghost">Choose meeting audio</button>
+        <span id="mt-other-status" class="mt-other-status">Not connected — only your voice will be coached.</span>
+      </div>
+
+      <button id="mt-start" type="button" class="mt-btn mt-btn-primary">Start meeting coach</button>
+      <p id="mt-error" class="mt-error hidden"></p>
+
+      <ul class="mt-tips">
+        <li><strong>Wear headphones</strong> so the coach only hears you, not the other people.</li>
+        <li><strong>Drag the bubble</strong> anywhere on your screen — it stays on top of your call.</li>
+        <li><strong>Keep this tab open</strong> until the meeting ends. Use Chrome or Edge on a computer.</li>
+        <li>Nudges are <strong>text only</strong> — nobody in the call can hear or see them.</li>
+      </ul>
+    </section>
+
+    <!-- Live / results -->
+    <section id="mt-live" class="mt-card mt-live hidden">
+      <div class="mt-live-head">
+        <span id="mt-live-status" class="mt-status">Connecting…</span>
+        <span id="mt-live-timer" class="mt-timer">00:00</span>
+      </div>
+      <p id="mt-pip-note" class="mt-note"></p>
+      <button id="mt-reopen" type="button" class="mt-btn mt-btn-ghost hidden">Pop the bubble out again</button>
+
+      <div id="mt-points-panel" class="mt-points-panel hidden">
+        <div class="mt-label">Points to cover <span id="mt-points-count" class="mt-points-count"></span></div>
+        <ul id="mt-points-list" class="mt-points-list"></ul>
+      </div>
+
+      <div class="mt-live-grid">
+        <div>
+          <div class="mt-label">Live transcript</div>
+          <div id="mt-transcript" class="mt-transcript"><div class="mt-empty">Start talking — your words appear here.</div></div>
+        </div>
+        <div>
+          <div class="mt-label">Nudges</div>
+          <div id="mt-nudges" class="mt-nudges"><div class="mt-empty">No nudges yet. Silence means you're doing well.</div></div>
+        </div>
+      </div>
+
+      <div id="mt-result" class="mt-result hidden"></div>
+
+      <div class="mt-live-actions">
+        <button id="mt-end" type="button" class="mt-btn mt-btn-danger">End meeting</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- The floating coach bubble. Moved into a Picture-in-Picture window when the
+       browser supports it (stays on top of every app); otherwise it floats on this page. -->
+  <template id="mt-bubble-template">
+    <div class="pm-bubble" data-state="idle" data-size="full" data-scale="m" data-open="false" data-details="false">
+      <!-- The pill: always visible. Shows status, the latest tip in short, agenda ring and timer. -->
+      <div class="pm-pill pm-drag">
+        <span class="pm-dot" aria-hidden="true"></span>
+        <span class="pm-mini" aria-live="polite">Starting…</span>
+        <span class="pm-ring" title="Meeting progress" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle class="pm-ring-track" cx="12" cy="12" r="9"/><circle class="pm-ring-fill" cx="12" cy="12" r="9"/></svg>
+        </span>
+        <span class="pm-timer">00:00</span>
+        <button type="button" class="pm-icon pm-details-btn" title="Show details" aria-label="Show details" aria-expanded="false">⌄</button>
+      </div>
+
+      <!-- The drop: slides down for a tip, an answer outline or help, then folds back up. -->
+      <div class="pm-drop">
+        <div class="pm-msg">
+          <div class="pm-state">Listening</div>
+          <div class="pm-nudge-row">
+            <div class="pm-nudge"></div>
+            <span class="pm-rate hidden">
+              <button type="button" class="pm-rate-btn pm-up" title="Helpful" aria-label="This tip was helpful">👍</button>
+              <button type="button" class="pm-rate-btn pm-down" title="Not helpful" aria-label="This tip was not helpful">👎</button>
+            </span>
+          </div>
+        </div>
+        <div class="pm-hint hidden">
+          <div class="pm-hint-label">💡 Answer outline</div>
+          <div class="pm-hint-q"></div>
+          <ol class="pm-hint-points"></ol>
+        </div>
+
+        <div class="pm-details">
+          <div class="pm-live">
+            <span class="pm-chip pm-mood hidden" title="How the client comes across"></span>
+            <span class="pm-chip pm-answer hidden" title="How long your current answer has run"></span>
+          </div>
+          <div class="pm-agenda hidden" aria-label="Meeting progress">
+            <span class="pm-agenda-track"><span class="pm-agenda-fill"></span></span>
+            <span class="pm-agenda-label"></span>
+          </div>
+          <div class="pm-stats">
+            <span class="pm-stat"><b class="pm-wpm">–</b> wpm</span>
+            <span class="pm-stat"><b class="pm-fillers">0</b> fillers</span>
+            <span class="pm-stat"><b class="pm-talk">–</b> your talk</span>
+            <span class="pm-stat pm-eye-stat"><b class="pm-eye">–</b></span>
+            <span class="pm-stat pm-points-stat hidden"><b class="pm-points-done">0/0</b> points</span>
+          </div>
+          <div class="pm-points hidden"><span class="pm-points-label">To cover:</span> <span class="pm-points-left"></span></div>
+          <div class="pm-meters" aria-hidden="true">
+            <span class="pm-meter-label">You</span><span class="pm-meter"><i class="pm-meter-you"></i></span>
+            <span class="pm-meter-label">Them</span><span class="pm-meter"><i class="pm-meter-them"></i></span>
+            <span class="pm-them-off hidden">not shared</span>
+          </div>
+          <div class="pm-recent"></div>
+        </div>
+
+        <div class="pm-stt-warn hidden" role="status"></div>
+
+        <div class="pm-settings hidden">
+          <label>Opacity <input type="range" class="pm-opt-opacity" min="40" max="100" step="5" value="100" /></label>
+          <label>Size
+            <select class="pm-opt-scale"><option value="s">Small</option><option value="m" selected>Medium</option><option value="l">Large</option></select>
+          </label>
+          <label class="pm-opt-check"><input type="checkbox" class="pm-opt-dim" checked /> Dim when idle</label>
+          <label class="pm-opt-check"><input type="checkbox" class="pm-opt-quiet" checked /> Hold tips while client talks</label>
+        </div>
+
+        <div class="pm-actions">
+          <div class="pm-help-group">
+            <button type="button" class="pm-help-btn" data-help="answer" title="Help me answer their last question">💡<span>Answer</span></button>
+            <button type="button" class="pm-help-btn" data-help="catchup" title="Catch me up on the last 2 minutes">↺<span>Catch up</span></button>
+            <button type="button" class="pm-help-btn" data-help="ask" title="Suggest a question to ask">?<span>Ask</span></button>
+          </div>
+          <div class="pm-ctl-group">
+            <button type="button" class="pm-icon pm-settings-btn" title="Bubble settings" aria-label="Bubble settings" aria-expanded="false">⚙</button>
+            <button type="button" class="pm-icon pm-size" title="Shrink to the pill" aria-label="Shrink to the pill">▁</button>
+            <button type="button" class="pm-icon pm-pause" title="Pause listening" aria-label="Pause">❚❚</button>
+            <button type="button" class="pm-end" title="End meeting" aria-label="End meeting">■ End</button>
+          </div>
+        </div>
+        <a class="pm-review hidden" target="_blank" rel="noopener">Open full review →</a>
+      </div>
+    </div>
+  </template>
+
+  <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
+
+  <script src="/static/tester.js?v=20261020i"></script>
+  <script src="/static/audio-leveler.js?v=20261020i"></script>
+  <script src="/static/gaze.js?v=20261020i"></script>
+  <script src="/static/meeting.js?v=20261020i"></script>
+</body>
+</html>

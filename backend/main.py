@@ -51,6 +51,7 @@ from google.adk.agents.live_request_queue import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google import genai
 from google.genai import types
 
 from backend.agents.live_coach import make_live_coach_agent
@@ -68,11 +69,16 @@ from backend.agents.post_session import (
     RESEARCH_AGENT,
     SESSION_SUMMARY_AGENT,
     SYNTHESIS_AGENT,
+    QA_REVIEW_AGENT,
+    RECAP_AGENT,
 )
 from backend.db import get_db
 from backend.multimodal import extract_image_prompts, generate_session_assets
-from backend.scorecard import build_scorecard
-from backend.session_state import SessionState
+from backend.scorecard import MIN_SCORABLE_WORDS, build_scorecard
+from backend.session_state import SessionState, extract_qa_pairs, looks_like_question, looks_like_tool_text
+from backend.transcriber import LiveTranscriber, transcription_enabled
+from backend import claude_client
+from backend import meeting_brief
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -129,6 +135,7 @@ _T_VIDEO_IN  = 0x02   # client→server: JPEG frame
 _T_STOP      = 0x03   # client→server: end session
 _T_SCREEN_IN = 0x04   # client→server: screen-share JPEG frame
 _T_SLIDE_IN  = 0x05   # client→server: uploaded slide JPEG frame
+_T_OTHER_AUDIO_IN = 0x06  # client→server: meeting tab/system audio (other participants), PCM 16 kHz
 _T_AUDIO_OUT = 0x10   # server→client: coach PCM 24kHz
 
 
@@ -254,6 +261,37 @@ def _resolve_user_scope(raw_user_id: str | None, *, client_ip: str) -> str:
     if explicit:
         return explicit
     return _hash_scope(client_ip or "unknown", "anon")
+
+
+def _sanitize_transcript_chunk(text: str | None) -> str:
+    """
+    Like _sanitize_transcript_text but keeps leading/trailing whitespace: Live API
+    transcription streams sub-word chunks whose edge spaces mark word boundaries.
+    """
+    raw = text or ""
+    clean = _CONTROL_CHAR_RE.sub(" ", raw)
+    clean = _CTRL_TOKEN_RE.sub(" ", clean)
+    clean = _ASR_TAG_RE.sub(" ", clean)
+    return re.sub(r"\s+", " ", clean)
+
+
+_VALID_PLATFORMS = ("zoom", "google_meet", "teams", "webex", "other")
+# Meetings run far longer than practice rehearsals.
+MEETING_MAX_MINUTES = max(5, _int_env("MEETING_MAX_MINUTES", 90))
+PRACTICE_MAX_MINUTES = 15
+
+_MEASURED_CUES = {
+    "filler": "Pause instead of fillers.",
+    "pace": "Slow down — breathe between sentences.",
+    "monotone": "Add energy — vary your tone.",
+}
+
+_EYE_CUES = {
+    "notes": "Eyes up — look at the camera.",
+    "away": "Look back at the camera.",
+    "no_face": "Step back into frame and face the camera.",
+}
+_GAZE_LABELS = {"notes": "looking down", "away": "looking sideways", "no_face": "out of frame"}
 
 
 def _sanitize_transcript_text(text: str | None) -> str:
@@ -593,6 +631,8 @@ WS_MAX_MESSAGES_PER_SECOND = _int_env("WS_MAX_MESSAGES_PER_SECOND", 30)
 WS_MAX_BYTES_PER_SECOND = _int_env("WS_MAX_BYTES_PER_SECOND", 1_000_000)
 WS_MAX_BINARY_FRAME_BYTES = _int_env("WS_MAX_BINARY_FRAME_BYTES", 600_000)
 WS_MAX_TEXT_FRAME_BYTES = _int_env("WS_MAX_TEXT_FRAME_BYTES", 4_096)
+# The pre-call brief (notes + points) is the one larger text message a client sends.
+_BRIEF_MAX_FRAME_BYTES = 24_000
 ENABLE_SCREEN_SHARE = _bool_env("ENABLE_SCREEN_SHARE", True)
 ENABLE_IMAGE_GENERATION = _bool_env("ENABLE_IMAGE_GENERATION", True)
 IMAGE_GENERATION_TIMEOUT_S = _int_env("IMAGE_GENERATION_TIMEOUT_S", 24)
@@ -626,10 +666,10 @@ def _make_run_config() -> RunConfig:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("PitchMirror starting up")
-    if not _db._enabled:
+    if not _db.durable:
         logger.warning(
-            "Firestore is DISABLED — session history will not persist across restarts. "
-            "Set GOOGLE_CLOUD_PROJECT to enable durable storage."
+            "No durable storage — session history will not persist across restarts. "
+            "Set GOOGLE_CLOUD_PROJECT (Firestore) or LOCAL_DB_PATH (SQLite)."
         )
     yield
     logger.info("PitchMirror shutting down")
@@ -682,12 +722,22 @@ async def http_hardening_middleware(request: Request, call_next):
 
 @app.get("/")
 async def root():
-    return FileResponse("frontend/landing.html")
+    return FileResponse("frontend/landing.html", headers=_NO_CACHE)
+
+
+# HTML pages must revalidate so a rebuilt app is picked up immediately; static
+# assets are cache-busted with ?v= in the pages instead.
+_NO_CACHE = {"Cache-Control": "no-cache"}
 
 
 @app.get("/app")
 async def app_page():
-    return FileResponse("frontend/index.html")
+    return FileResponse("frontend/index.html", headers=_NO_CACHE)
+
+
+@app.get("/meeting")
+async def meeting_page():
+    return FileResponse("frontend/meeting.html", headers=_NO_CACHE)
 
 
 @app.get("/health")
@@ -760,6 +810,9 @@ def _session_summary(payload: dict) -> dict:
         "user_id": payload.get("user_id"),
         "created_at": payload.get("created_at"),
         "coach_mode": payload.get("coach_mode", "general"),
+        "session_kind": payload.get("session_kind", "practice"),
+        "insufficient_speech": bool(payload.get("insufficient_speech")),
+        "platform": payload.get("platform", ""),
         "delivery_context": payload.get("delivery_context", "virtual"),
         "primary_goal": payload.get("primary_goal", "balanced"),
         "screen_enabled": bool(payload.get("screen_enabled")),
@@ -772,6 +825,12 @@ def _session_summary(payload: dict) -> dict:
         "pace_score": (categories.get("pace") or {}).get("score"),
         "clarity_score": (categories.get("clarity") or {}).get("score"),
         "visual_score": (categories.get("visual_delivery") or {}).get("score"),
+        "coaching_moments": len(payload.get("coaching_events") or []),
+        "words": sum(
+            len(str(seg.get("t") or "").split())
+            for seg in (payload.get("transcript") or [])
+            if isinstance(seg, dict) and seg.get("s") == "u"
+        ),
     }
 
 
@@ -805,6 +864,108 @@ async def _fetch_user_history(user_id: str, limit: int = 1) -> str:
     except Exception as e:
         logger.warning("Failed to fetch user history: %s", e)
         return ""
+
+
+_FEEDBACK_WOULD_USE = ("yes", "maybe", "no")
+
+
+@app.post("/api/feedback")
+async def api_save_feedback(request: Request):
+    """Pilot feedback after a session (rating, what helped, what was annoying, would use)."""
+    user_id = _request_user_scope(request)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    session_id = str(body.get("session_id") or "").strip()[:64]
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,64}", session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    session = await _db.get_session(session_id)
+    if not session or session.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        rating = int(body.get("rating"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="rating must be 1-5")
+    if not 1 <= rating <= 5:
+        raise HTTPException(status_code=400, detail="rating must be 1-5")
+    would_use = str(body.get("would_use") or "").lower()
+    feedback = {
+        "user_id": user_id,
+        "tester": str(body.get("tester") or "").strip()[:60],
+        "rating": rating,
+        "helped": str(body.get("helped") or "").strip()[:1000],
+        "annoying": str(body.get("annoying") or "").strip()[:1000],
+        "would_use": would_use if would_use in _FEEDBACK_WOULD_USE else "",
+        "session_kind": session.get("session_kind", "practice"),
+        "platform": session.get("platform", ""),
+        "coach_mode": session.get("coach_mode", ""),
+        "overall_score": session.get("overall_score"),
+        "duration_seconds": session.get("duration_seconds"),
+        "created_at": int(time.time()),
+    }
+    await _db.save_feedback(session_id, feedback)
+    return {"ok": True}
+
+
+@app.get("/api/feedback/summary")
+async def api_feedback_summary(limit: int = Query(default=500, ge=1, le=2000)):
+    """
+    Aggregate pilot feedback across all testers on this deployment.
+    Pilot-only: on a shared deployment put this behind admin auth.
+    """
+    rows = await _db.list_feedback(limit=limit)
+    n = len(rows)
+    ratings = [r["rating"] for r in rows if isinstance(r.get("rating"), int)]
+    would = {k: sum(1 for r in rows if r.get("would_use") == k) for k in _FEEDBACK_WOULD_USE}
+    testers = sorted({r.get("tester") or "Unnamed" for r in rows})
+    by_kind: dict[str, dict] = {}
+    for r in rows:
+        k = r.get("session_kind") or "practice"
+        b = by_kind.setdefault(k, {"count": 0, "rating_sum": 0})
+        b["count"] += 1
+        b["rating_sum"] += r.get("rating") or 0
+    # 👍/👎 that testers gave individual nudges during sessions, by nudge type.
+    nudge_ratings: dict[str, dict[str, int]] = {}
+    for sess in await _db.list_recent(limit=100):
+        full = await _db.get_session(sess.get("session_id", "")) if "coaching_events" not in sess else sess
+        for ev in (full or {}).get("coaching_events") or []:
+            vote = ev.get("user_rating")
+            if vote in ("up", "down"):
+                bucket = nudge_ratings.setdefault(ev.get("type") or "other", {"up": 0, "down": 0})
+                bucket[vote] += 1
+    return {
+        "count": n,
+        "nudge_ratings": nudge_ratings,
+        "avg_rating": round(sum(ratings) / len(ratings), 2) if ratings else None,
+        "rating_histogram": {str(i): ratings.count(i) for i in range(1, 6)},
+        "would_use": would,
+        "would_use_yes_pct": round(100 * would["yes"] / n) if n else None,
+        "testers": testers,
+        "by_kind": {k: {"count": v["count"], "avg_rating": round(v["rating_sum"] / v["count"], 2)} for k, v in by_kind.items()},
+        "comments": [
+            {
+                "tester": r.get("tester") or "Unnamed",
+                "rating": r.get("rating"),
+                "would_use": r.get("would_use"),
+                "helped": r.get("helped"),
+                "annoying": r.get("annoying"),
+                "session_kind": r.get("session_kind"),
+                "created_at": r.get("created_at"),
+            }
+            for r in rows if r.get("helped") or r.get("annoying")
+        ][:200],
+    }
+
+
+@app.get("/pilot")
+async def pilot_page():
+    return FileResponse("frontend/pilot.html", headers=_NO_CACHE)
+
+
+@app.get("/guide")
+async def guide_page():
+    return FileResponse("frontend/guide.html", headers=_NO_CACHE)
 
 
 @app.get("/api/sessions/stats")
@@ -908,13 +1069,22 @@ async def websocket_endpoint(websocket: WebSocket):
         websocket.query_params.get("demo"),
         default=DEMO_MODE_DEFAULT,
     )
+    session_kind = "meeting" if (websocket.query_params.get("kind") or "").lower() == "meeting" else "practice"
+    raw_platform = (websocket.query_params.get("platform") or "").strip().lower()
+    platform = raw_platform if raw_platform in _VALID_PLATFORMS else ("other" if session_kind == "meeting" else "")
+    if session_kind == "meeting":
+        screen_enabled = False   # no slide/screen coaching while in a real call
+        demo_mode = False
     user_slides = _slides_for_user(user_id)
-    total_slides = len(user_slides["slides"]) if user_slides else 0
+    total_slides = len(user_slides["slides"]) if user_slides and session_kind == "practice" else 0
 
     # ── Context Caching: fetch recent session summary ─────────────
     previous_summary = await _fetch_user_history(user_id, limit=1)
 
-    logger.info("Session started: %s ip=%s user=%s persona=%s", session_id, client_ip, user_id, persona)
+    logger.info(
+        "Session started: %s ip=%s user=%s persona=%s kind=%s platform=%s",
+        session_id, client_ip, user_id, persona, session_kind, platform or "-",
+    )
 
     state = SessionState(
         session_id=session_id,
@@ -923,6 +1093,8 @@ async def websocket_endpoint(websocket: WebSocket):
         delivery_context=delivery_context,
         primary_goal=primary_goal,
         persona=persona,
+        session_kind=session_kind,
+        platform=platform,
         screen_enabled=screen_enabled,
         demo_mode=demo_mode,
         previous_summary=previous_summary,
@@ -941,6 +1113,16 @@ async def websocket_endpoint(websocket: WebSocket):
         },
     )
     live_request_queue = LiveRequestQueue()
+    state.live_queue = live_request_queue
+    if transcription_enabled():
+        state.user_stt = LiveTranscriber(
+            "user", _stt_callback(state, "user"), session_id=session_id, on_status=_stt_status_callback(state, "user"),
+        )
+        if session_kind == "meeting":
+            state.other_stt = LiveTranscriber(
+                "other", _stt_callback(state, "other"), session_id=session_id,
+                on_status=_stt_status_callback(state, "other"),
+            )
 
     try:
         live_agent = make_live_coach_agent(state)
@@ -965,12 +1147,16 @@ async def websocket_endpoint(websocket: WebSocket):
             "primary_goal": state.primary_goal,
             "screen_enabled": state.screen_enabled,
             "demo_mode": state.demo_mode,
+            "session_kind": state.session_kind,
+            "platform": state.platform,
+            "max_minutes": MEETING_MAX_MINUTES if session_kind == "meeting" else PRACTICE_MAX_MINUTES,
             "total_slides": state.total_slides,
             "current_slide_index": state.current_slide_index,
             "has_uploaded_slides": state.total_slides > 0,
         })
 
-        async with asyncio.timeout(900):   # 15-min hard limit per session
+        max_minutes = MEETING_MAX_MINUTES if session_kind == "meeting" else PRACTICE_MAX_MINUTES
+        async with asyncio.timeout(max_minutes * 60):   # hard limit per session
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(
                     _upstream(websocket, live_request_queue, state),
@@ -990,9 +1176,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         _demo_seed_scheduler(websocket, state),
                         name="demo_scheduler",
                     )
+                if state.session_kind == "meeting":
+                    tg.create_task(_meeting_nudge_watcher(state, live_request_queue), name="meeting_nudges")
+                else:
+                    tg.create_task(_practice_voice_followup(state, live_request_queue), name="voice_followup")
+                # The client-audio transcriber starts lazily, on the first meeting-audio frame
+                # (see _upstream) — no idle session when nothing is shared.
+                if state.user_stt is not None:
+                    tg.create_task(state.user_stt.run(), name="stt_user")
 
     except asyncio.TimeoutError:
-        logger.warning("Session %s exceeded 15-minute limit — closing", session_id)
+        logger.warning("Session %s exceeded %d-minute limit — closing", session_id, max_minutes)
         await _safe_send(websocket, {"type": "status", "state": "session_timeout"})
         await websocket.close()
     except WebSocketDisconnect:
@@ -1007,6 +1201,16 @@ async def websocket_endpoint(websocket: WebSocket):
         state.stop_drain()          # sentinel → drain task exits cleanly
         live_request_queue.close()
         _ws_concurrent_limiter.release(client_ip)
+
+    if state.other_stt_task is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(state.other_stt_task), timeout=8.0)
+        except (asyncio.TimeoutError, Exception):
+            state.other_stt_task.cancel()
+    state.transcription_health = {
+        stt.name: dict(stt.stats) for stt in (state.user_stt, state.other_stt)
+        if stt is not None and (stt is state.user_stt or state.other_stt_task is not None)
+    }
 
     # ── Post-session analysis ─────────────────────────────────────
     try:
@@ -1027,9 +1231,727 @@ async def websocket_endpoint(websocket: WebSocket):
     await _db.save_session(session_id, scorecard)
     await _safe_send(websocket, {"type": "scorecard", "data": scorecard})
     logger.info(f"Session {session_id} complete. Score: {scorecard['overall_score']}")
+    if callable(state.pending_profile_update):
+        await state.pending_profile_update()
 
 
 # ── Concurrent session tasks ──────────────────────────────────────
+
+def _stt_callback(state: SessionState, speaker: str):
+    """Store a finished transcription segment and show it in the browser as one line."""
+    def on_text(text: str) -> None:
+        text = _sanitize_transcript_text(text)
+        if not text:
+            return
+        if speaker == "other":
+            state.other_audio_seen = True
+        state.add_transcript(speaker, text)
+        state._enqueue({"type": "transcript", "speaker": speaker, "text": text})
+        state._enqueue({"type": "transcript_end", "speaker": speaker})
+        if speaker == "other" and state.session_kind == "meeting" and looks_like_question(text):
+            _request_answer_hint(state, text)
+    return on_text
+
+
+def _stt_status_callback(state: SessionState, speaker: str):
+    """Tell the browser when a transcript stream is re-syncing (or back to normal)."""
+    def on_status(status: str) -> None:
+        state._enqueue({"type": "stt_status", "speaker": speaker, "state": status})
+        if status != "ok":
+            state.record_timeline("transcription", f"{speaker} transcript {status}")
+    return on_status
+
+
+HINT_TIMEOUT_S = 25.0
+_HINT_FRAMEWORKS = {
+    "interview": "STAR: situation, what you did, the result",
+    "pitch": "problem, proof, the ask",
+    "sales_demo": "their pain, your value, the next step",
+    "presentation": "main point, evidence, takeaway",
+    "general": "direct answer, one example, wrap-up",
+}
+
+
+# Fast text model for answer outlines (~1-2 s). The live coaching model can only answer
+# in audio, which took ~10 s; it remains the fallback if this model is unavailable.
+HINT_MODEL = os.getenv("PITCHMIRROR_HINT_MODEL", "gemini-3.1-flash-lite").strip()
+HINT_MODEL_TIMEOUT_S = 8.0
+_hint_client: genai.Client | None = None
+
+
+def _deliver_answer_hint(state: SessionState, question: str, points: list[str]) -> None:
+    hint = {"question": question, "points": points, "ts": round(state.duration_seconds(), 1)}
+    state.answer_hints.append(hint)
+    state._enqueue({"type": "answer_hint", **hint})
+    state.record_timeline("answer_hint", f"Hint: {' / '.join(points)}"[:220], {"question": question[:200]})
+    logger.info("answer_hint session=%s points=%s", state.session_id, points)
+
+
+def _request_answer_hint(state: SessionState, question: str) -> None:
+    """Get a 3-point outline the presenter can follow to answer the question just asked."""
+    if state.live_closed:
+        return
+    state.hint_question = question
+    prompt = _answer_hint_prompt(state, question)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:   # no event loop (unit tests / shutdown)
+        loop = None
+    if (HINT_MODEL or claude_client.claude_enabled()) and loop is not None:
+        loop.create_task(_hint_via_text_model(state, question, prompt))
+    else:
+        _hint_via_live_model(state, prompt)
+
+
+async def _hint_via_text_model(state: SessionState, question: str, prompt: str) -> None:
+    global _hint_client
+    started = time.monotonic()
+    if claude_client.claude_enabled():
+        try:
+            points = _parse_answer_hint(await claude_client.fast_text(prompt))
+            if points:
+                if state.hint_question == question and not state.live_closed:
+                    _deliver_answer_hint(state, question, points)
+                logger.info("answer_hint_latency session=%s %.1fs model=%s", state.session_id,
+                            time.monotonic() - started, claude_client.FAST_MODEL)
+                return
+        except Exception as exc:
+            logger.warning("answer_hint on Claude failed (%s) — trying Gemini", str(exc)[:120])
+        started = time.monotonic()
+    try:
+        if not HINT_MODEL:
+            raise RuntimeError("no Gemini hint model configured")
+        if _hint_client is None:
+            _hint_client = genai.Client()
+        resp = await _hedged_generate(_hint_client, HINT_MODEL, prompt)
+        points = _parse_answer_hint(resp.text or "")
+        if points:
+            if state.hint_question == question and not state.live_closed:   # still the latest question
+                _deliver_answer_hint(state, question, points)
+            logger.info("answer_hint_latency session=%s %.1fs model=%s", state.session_id, time.monotonic() - started, HINT_MODEL)
+            return
+        logger.info("answer_hint_unparsed session=%s text=%r", state.session_id, (resp.text or "")[:120])
+    except Exception as exc:
+        logger.warning("answer_hint text model failed (%s) — falling back to live model", str(exc)[:120])
+    if state.hint_question == question:
+        _hint_via_live_model(state, prompt)
+
+
+HINT_HEDGE_AFTER_S = 2.5
+
+
+async def _hedged_generate(client: genai.Client, model: str, prompt: str):
+    """
+    The model usually answers in <1 s but occasionally stalls for 6-12 s. If the first
+    request hasn't answered after HINT_HEDGE_AFTER_S, fire a second one and take whichever
+    finishes first (costs an extra request only when the first one is slow).
+    """
+    def call():
+        return asyncio.create_task(client.aio.models.generate_content(model=model, contents=prompt))
+
+    tasks = {call()}
+    deadline = time.monotonic() + HINT_MODEL_TIMEOUT_S
+    try:
+        done, _ = await asyncio.wait(tasks, timeout=HINT_HEDGE_AFTER_S)
+        if not done:
+            tasks.add(call())
+        while tasks:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise asyncio.TimeoutError()
+            done, tasks = await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                if not task.exception():
+                    return task.result()
+            if not tasks and done:
+                raise next(iter(done)).exception()
+        raise asyncio.TimeoutError()
+    finally:
+        for task in tasks:
+            task.cancel()
+
+
+def _hint_via_live_model(state: SessionState, prompt: str) -> None:
+    if state.live_queue is None or state.live_closed:
+        return
+    state.hint_sent_at = time.monotonic()
+    state.live_queue.send_content(types.Content(role="user", parts=[types.Part(text=prompt)]))
+
+
+def _answer_hint_prompt(state: SessionState, question: str) -> str:
+    framework = _HINT_FRAMEWORKS.get(state.coach_mode, _HINT_FRAMEWORKS["general"])
+    return (
+        f'[answer helper] The other participant just asked: "{question}"\n'
+        f"Meeting type: {state.coach_mode.replace('_', ' ')}. Recent conversation:\n"
+        f"{state.conversation_tail(seconds=90, max_chars=1200)}\n"
+        + (f"{meeting_brief.brief_context(state.brief_notes, state.brief_points)}\n" if state.brief_notes or state.brief_points else "")
+        + f"\nGive the presenter a quick outline to answer well ({framework}). Use the presenter's own "
+        "facts from the conversation when possible; never invent numbers.\n"
+        "Reply in exactly this spoken form and nothing else: "
+        "\"Hint. First, <point>. Second, <point>. Third, <point>.\" Each point at most 8 words. Do not call tools."
+    )
+
+
+def _parse_answer_hint(text: str) -> list[str] | None:
+    """'Hint. First, X. Second, Y. Third, Z.' → [X, Y, Z]; None if it isn't a hint."""
+    raw = re.sub(r"\s+", " ", text or "").strip()
+    parts = re.split(r"\b(?:first|second|third|1|2|3)\s*[,:.)-]\s*", raw, flags=re.IGNORECASE)
+    points = [p.strip(" .;:-") for p in parts[1:] if p.strip(" .;:-")]
+    if len(points) < 2:
+        return None
+    return [" ".join(p.split()[:12]) for p in points[:3]]
+
+
+CONTENT_CHECK_INTERVAL_S = 25.0
+CONTENT_CHECK_MIN_NEW_WORDS = 15
+CONTENT_CHECK_TIMEOUT_S = 30.0
+
+# Spoken category → issue type. The live model answers by voice, so its reply is read
+# from the audio transcription ("Off topic: answer the question directly.").
+_CONTENT_CATEGORIES = (
+    ("not answering", "off_topic"),
+    ("off topic", "off_topic"),
+    ("rambling", "rambling"),
+    ("repetitive", "rambling"),
+    ("unclear", "clarity"),
+    ("monotone", "monotone"),
+    ("boring", "monotone"),
+    ("hedging", "confidence"),
+    ("contradiction", "contradiction"),
+)
+_CONTENT_DEFAULT_CUES = {
+    "off_topic": "Answer the question they asked.",
+    "rambling": "Wrap up — make your point.",
+    "clarity": "Say it in one simple sentence.",
+    "monotone": "Add energy — vary your tone.",
+    "confidence": "Drop the hedging — be direct.",
+    "contradiction": "Keep your story consistent.",
+}
+
+
+def _parse_content_verdict(text: str) -> tuple[str, str] | None:
+    """
+    Parse the model's one-line verdict: "NONE" → ("none", ""), "CATEGORY: nudge" →
+    (issue_type, nudge). Returns None when the text isn't a verdict.
+    """
+    raw = re.sub(r"\s+", " ", text or "").strip()
+    low = re.sub(r"[_\-]", " ", raw.lower())     # same length → positions line up with raw
+    if re.match(r"^\W*(none|no nudge|nothing)\b", low):
+        return ("none", "")
+    for key, issue_type in _CONTENT_CATEGORIES:
+        m = re.search(rf"\b{key}\b\s*[:\-–,.]?\s*", low)
+        if m and m.start() <= 12:
+            nudge = raw[m.end():].strip(" .:-–\"'")
+            words = nudge.split()
+            nudge = " ".join(words[:10]) if words else _CONTENT_DEFAULT_CUES[issue_type]
+            return (issue_type, nudge)
+    return None
+
+
+def _handle_meeting_reply(state: SessionState, text: str) -> None:
+    """Route a meeting-mode model reply to the pending answer hint or content check."""
+    if state.hint_sent_at and time.monotonic() - state.hint_sent_at <= HINT_TIMEOUT_S:
+        points = _parse_answer_hint(text)
+        if points:
+            state.hint_sent_at = 0.0
+            _deliver_answer_hint(state, state.hint_question, points)
+            return
+    elif state.hint_sent_at:
+        state.hint_sent_at = 0.0
+    _handle_content_check_reply(state, text)
+
+
+def _handle_content_check_reply(state: SessionState, text: str) -> None:
+    if not state.content_check_sent_at:
+        return   # model spoke on its own (e.g. reacting to the other participant) — ignore
+    if time.monotonic() - state.content_check_sent_at > CONTENT_CHECK_TIMEOUT_S:
+        state.content_check_sent_at = 0.0
+        return
+    verdict = _parse_content_verdict(text)
+    if verdict is None:
+        logger.info("content_check_unparsed session=%s text=%r", state.session_id, text.strip()[:120])
+        return
+    state.content_check_sent_at = 0.0
+    issue_type, nudge = verdict
+    logger.info("content_check session=%s verdict=%s nudge=%r", state.session_id, issue_type, nudge)
+    if issue_type == "none" or not callable(state.flag_issue_fn):
+        return
+    def _flag(retry: bool) -> None:
+        if state.live_closed:
+            return
+        result = state.flag_issue_fn(
+            issue_type,
+            f"Coach check: {nudge}",
+            {"metric": "conversation_check", "threshold": "n/a", "sensor": "live_model_review"},
+        )
+        if result.get("recorded"):
+            state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": nudge})
+        elif retry and result.get("reason") == "global_cooldown":
+            # Another nudge was just shown; deliver this one as soon as the gap allows.
+            asyncio.get_running_loop().call_later(
+                float(result.get("wait_seconds") or 1) + 0.5, _flag, False,
+            )
+
+    _flag(retry=True)
+
+
+def _content_check_prompt(state: SessionState) -> str:
+    p = state.prosody_metrics
+    m = state.recent_speech_metrics()
+    return (
+        "[coach check] Live meeting, type: " + state.coach_mode.replace("_", " ") + ".\n"
+        "Recent conversation (You = the presenter you coach, Them = other participant"
+        + ("" if state.other_audio_seen else "; the other side is not being captured") + "):\n"
+        f"{state.conversation_tail() or '(nothing yet)'}\n\n"
+        f"Presenter voice right now: {m['wpm']:.0f} wpm, tone monotony {p.get('monotony_score', 0)}/100, "
+        f"energy {p.get('speaking_energy', 0)}.\n"
+        + (f"{meeting_brief.brief_context(state.brief_notes, state.brief_points)}\n\n" if state.brief_notes or state.brief_points else "")
+        + "Does the presenter need ONE nudge right now? Categories:\n"
+        "OFF_TOPIC (drifting / not answering what Them asked), RAMBLING (too long, repeating), "
+        "UNCLEAR, MONOTONE (flat, boring delivery), HEDGING (unsure, 'I think maybe'), CONTRADICTION.\n"
+        "Reply with exactly one short line and nothing else: NONE — or — CATEGORY: nudge of at most 7 words. "
+        "Do not call tools."
+    )
+
+
+def _apply_brief(state: SessionState, payload: dict) -> None:
+    """Store the pre-call brief; derive points from the notes when none were listed."""
+    state.brief_notes = str(payload.get("notes") or "")[: meeting_brief.MAX_NOTES_CHARS].strip()
+    try:
+        state.planned_minutes = max(0, min(240, int(payload.get("planned_minutes") or 0)))
+    except (TypeError, ValueError):
+        state.planned_minutes = 0
+    points = meeting_brief.clean_points(payload.get("points") or [])
+    state.brief_points = meeting_brief.new_point_rows(points)
+    state.record_timeline("brief", f"Brief: {len(points)} points, {state.planned_minutes} min planned")
+    logger.info("brief session=%s points=%d notes_chars=%d planned=%s",
+                state.session_id, len(points), len(state.brief_notes), state.planned_minutes)
+    if points or not state.brief_notes:
+        state._enqueue({"type": "brief_points", "points": state.brief_points, "derived": False})
+        return
+    try:
+        asyncio.get_running_loop().create_task(_derive_brief_points(state))
+    except RuntimeError:
+        pass
+
+
+async def _derive_brief_points(state: SessionState) -> None:
+    if not claude_client.claude_enabled():
+        return
+    try:
+        reply = await claude_client.fast_text(
+            meeting_brief.extract_points_prompt(state.brief_notes, state.coach_mode), max_tokens=400,
+        )
+        points = meeting_brief.parse_points_reply(reply)
+        if points and not state.brief_points:
+            state.brief_points = meeting_brief.new_point_rows(points)
+            state._enqueue({"type": "brief_points", "points": state.brief_points, "derived": True})
+            logger.info("brief_points_derived session=%s points=%s", state.session_id, points)
+    except Exception as exc:
+        logger.warning("brief point extraction failed (%s)", str(exc)[:120])
+
+
+async def _run_coverage_check(state: SessionState) -> None:
+    """Ask the fast model which brief points the presenter has covered so far."""
+    pending = [p for p in state.brief_points if not p["covered"]]
+    if not pending or not claude_client.claude_enabled():
+        return
+    try:
+        reply = await claude_client.fast_text(
+            meeting_brief.coverage_prompt(state.brief_points, state.conversation_tail(seconds=3600, max_chars=6000)),
+            max_tokens=60,
+        )
+    except Exception as exc:
+        logger.warning("coverage check failed (%s)", str(exc)[:120])
+        return
+    covered = meeting_brief.parse_coverage_reply(reply, len(state.brief_points))
+    if not covered:
+        return
+    changed = False
+    for i in covered:
+        row = state.brief_points[i]
+        if not row["covered"]:
+            row["covered"], row["ts"] = True, round(state.duration_seconds(), 1)
+            changed = True
+            state.record_timeline("brief_point", f"Covered: {row['text']}"[:220])
+    if changed:
+        state._enqueue({"type": "brief_points", "points": state.brief_points})
+        logger.info("brief_coverage session=%s covered=%d/%d", state.session_id,
+                    sum(p["covered"] for p in state.brief_points), len(state.brief_points))
+
+
+def _maybe_brief_reminder(state: SessionState) -> None:
+    """Near the planned end, remind the presenter of points still not covered (once)."""
+    if state.brief_reminded or not state.planned_minutes or not state.brief_points:
+        return
+    if state.duration_seconds() < state.planned_minutes * 60 * meeting_brief.REMINDER_AT_FRACTION:
+        return
+    state.brief_reminded = True
+    remaining = [p["text"] for p in state.brief_points if not p["covered"]]
+    if remaining:
+        state._enqueue({"type": "brief_reminder", "points": remaining})
+        state.record_timeline("brief_reminder", f"Still to cover: {'; '.join(remaining)}"[:220])
+
+
+# ── On-demand help, client mood, nudge ratings, interruptions (Meeting Mode) ──
+
+_HELP_KINDS = ("answer", "catchup", "ask")
+_HELP_MIN_GAP_S = 3.0
+_MOODS = ("engaged", "positive", "neutral", "confused", "skeptical", "disengaged")
+_MOOD_ALERTS = {
+    "confused": "Client seems confused — pause and check in.",
+    "skeptical": "Client sounds skeptical — give proof or an example.",
+    "disengaged": "Client is drifting — ask them a question.",
+}
+
+
+def _last_other_question(state: SessionState) -> str:
+    for seg in reversed(state.transcript):
+        if seg.get("s") == "o" and looks_like_question(seg.get("t") or ""):
+            return seg["t"].strip()
+    for seg in reversed(state.transcript):
+        if seg.get("s") == "o" and (seg.get("t") or "").strip():
+            return seg["t"].strip()
+    return ""
+
+
+def _help_prompt(state: SessionState, kind: str) -> str:
+    brief = meeting_brief.brief_context(state.brief_notes, state.brief_points)
+    convo = state.conversation_tail(seconds=150, max_chars=2500) or "(nothing yet)"
+    if kind == "catchup":
+        return (
+            "A presenter in a live meeting lost focus for a moment. Recent conversation "
+            "(You = presenter, Them = other participants):\n"
+            f"{convo}\n\nCatch them up in at most 2 short lines (max 15 words each): what was just discussed "
+            "and what Them is waiting for. Plain lines, no bullets, no preamble."
+        )
+    # kind == "ask"
+    return (
+        f"Live {state.coach_mode.replace('_', ' ')}. Recent conversation (You = presenter, Them = other participants):\n"
+        f"{convo}\n" + (f"{brief}\n" if brief else "")
+        + "\nSuggest ONE smart question the presenter could ask Them right now to move the meeting toward "
+        "its goals (uncover needs, handle a concern, or agree a next step). "
+        "Reply exactly: QUESTION: <question, max 20 words> | WHY: <max 10 words>"
+    )
+
+
+def _parse_help_reply(kind: str, text: str) -> list[str]:
+    raw = (text or "").strip()
+    if kind == "ask":
+        m = re.search(r"question\s*:\s*(.+?)(?:\|\s*why\s*:\s*(.+))?$", raw, re.IGNORECASE | re.DOTALL)
+        if m:
+            lines = [" ".join(m.group(1).split())]
+            if m.group(2):
+                lines.append(f"Why: {' '.join(m.group(2).split())}")
+            return lines
+    lines = [ln.strip(" -•*") for ln in raw.splitlines() if ln.strip(" -•*")]
+    return [" ".join(ln.split()[:24]) for ln in lines[:3]]
+
+
+def _request_help(state: SessionState, kind: str) -> None:
+    """Presenter tapped a help button in the bubble."""
+    if kind not in _HELP_KINDS or state.live_closed:
+        return
+    last = getattr(state, "_help_last", {})
+    now = time.monotonic()
+    if now - last.get(kind, 0.0) < _HELP_MIN_GAP_S:
+        return
+    last[kind] = now
+    state._help_last = last
+    state.record_timeline("help", f"Asked for help: {kind}")
+    if kind == "answer":
+        question = _last_other_question(state)
+        if not question:
+            state._enqueue({"type": "help_reply", "kind": kind, "title": "Help me answer",
+                            "lines": ["No question from them yet — share the meeting audio so I can hear them."]})
+            return
+        _request_answer_hint(state, question)
+        return
+    try:
+        asyncio.get_running_loop().create_task(_run_help(state, kind))
+    except RuntimeError:
+        pass
+
+
+async def _run_help(state: SessionState, kind: str) -> None:
+    title = {"catchup": "Catch me up", "ask": "Question to ask"}[kind]
+    lines: list[str] = []
+    if claude_client.claude_enabled():
+        try:
+            lines = _parse_help_reply(kind, await claude_client.fast_text(_help_prompt(state, kind), max_tokens=200))
+        except Exception as exc:
+            logger.warning("help %s failed (%s)", kind, str(exc)[:120])
+    if not lines:
+        lines = ["Couldn't get that right now — try again in a moment."]
+    state._enqueue({"type": "help_reply", "kind": kind, "title": title, "lines": lines})
+    logger.info("help_reply session=%s kind=%s lines=%s", state.session_id, kind, lines)
+
+
+def _mood_prompt(state: SessionState) -> str:
+    return (
+        "Live meeting. Recent conversation (You = presenter, Them = the client/other side):\n"
+        f"{state.conversation_tail(seconds=120, max_chars=2500)}\n\n"
+        "Judge only how THEM comes across right now. Reply exactly one line: "
+        "MOOD: ENGAGED | POSITIVE | NEUTRAL | CONFUSED | SKEPTICAL | DISENGAGED — <reason, max 8 words>"
+    )
+
+
+def _parse_mood(text: str) -> tuple[str, str] | None:
+    m = re.search(r"mood\s*:\s*([a-z]+)\s*(?:[—–:-]+\s*(.*))?", text or "", re.IGNORECASE)
+    if not m or m.group(1).lower() not in _MOODS:
+        return None
+    return m.group(1).lower(), " ".join((m.group(2) or "").split())[:80]
+
+
+async def _run_mood_check(state: SessionState) -> None:
+    if not claude_client.claude_enabled():
+        return
+    try:
+        parsed = _parse_mood(await claude_client.fast_text(_mood_prompt(state), max_tokens=60))
+    except Exception as exc:
+        logger.warning("mood check failed (%s)", str(exc)[:120])
+        return
+    if not parsed:
+        return
+    mood, reason = parsed
+    prev = state.client_moods[-1]["mood"] if state.client_moods else None
+    row = {"ts": round(state.duration_seconds(), 1), "mood": mood, "reason": reason}
+    state.client_moods.append(row)
+    alert = _MOOD_ALERTS.get(mood) if mood != prev else None
+    state._enqueue({"type": "client_mood", **row, "alert": alert})
+    if mood != prev:
+        state.record_timeline("client_mood", f"Client {mood}: {reason}"[:220])
+    logger.info("client_mood session=%s %s (%s)", state.session_id, mood, reason)
+
+
+def _rate_nudge(state: SessionState, index, useful) -> None:
+    try:
+        i = int(index)
+    except (TypeError, ValueError):
+        return
+    if 0 <= i < len(state.events) and isinstance(useful, bool):
+        state.events[i].user_rating = "up" if useful else "down"
+
+
+def _record_interruption(state: SessionState, overlap_s) -> None:
+    """Browser detected the presenter talking over the other participant."""
+    state.interruptions += 1
+    try:
+        overlap = round(float(overlap_s), 1)
+    except (TypeError, ValueError):
+        overlap = None
+    if callable(state.flag_issue_fn):
+        result = state.flag_issue_fn(
+            "interruption",
+            "Started talking while they were still speaking.",
+            {"metric": "overlap_seconds", "threshold": ">=0.8s", "measured": overlap, "sensor": "audio_overlap"},
+        )
+        if result.get("recorded"):
+            state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": "Let them finish."})
+        elif result.get("reason") == "global_cooldown":
+            # Another tip was just shown: keep the measurement for the review without a nudge.
+            state.record_event(
+                "interruption", "Started talking while they were still speaking.",
+                {"metric": "overlap_seconds", "threshold": ">=0.8s", "measured": overlap, "sensor": "audio_overlap"},
+                source="sensor",
+            )
+
+
+async def _run_content_check(state: SessionState, live_request_queue: LiveRequestQueue, prompt: str) -> None:
+    """Conversation check on Claude's fast model; the live Gemini model answers if Claude can't."""
+    if claude_client.claude_enabled():
+        started = time.monotonic()
+        try:
+            reply = await claude_client.fast_text(prompt, max_tokens=120)
+            logger.info("content_check_reply session=%s %.1fs %r", state.session_id, time.monotonic() - started, reply[:100])
+            _handle_content_check_reply(state, reply)
+            return
+        except Exception as exc:
+            logger.warning("content check on Claude failed (%s) — asking the live model", str(exc)[:120])
+    if not state.live_closed:
+        live_request_queue.send_content(types.Content(role="user", parts=[types.Part(text=prompt)]))
+
+
+_PRACTICE_CUES = {
+    "filler": "Pause instead of saying um.",
+    "pace": "Slow down — you're rushing.",
+    "clarity": "Say that again in one clear sentence.",
+    "contradiction": "That contradicts what you said earlier.",
+    "slide_clarity": "Simplify this slide.",
+    "slide_mismatch": "Your words don't match the slide.",
+}
+VOICE_FOLLOWUP_AFTER_S = 2.0
+
+
+async def _practice_voice_followup(state: SessionState, live_request_queue: LiveRequestQueue) -> None:
+    """
+    Practice mode: measured filler / pace checks, plus a spoken fallback — if no coach
+    audio followed a confirmed issue within a couple of seconds, the browser speaks one
+    fixed short cue (the live model often checks tools instead of speaking).
+    """
+    followed_up = 0.0
+    fast_checks = 0
+    tick = 0
+    while not state.live_closed and state.is_active:
+        await asyncio.sleep(1.0)
+        tick += 1
+        # Measured checks every 3 s, so fillers / fast pace are caught even when the
+        # model doesn't call flag_issue itself.
+        if tick % 3 == 0 and callable(state.flag_issue_fn):
+            m = state.recent_speech_metrics()
+            fast_checks = fast_checks + 1 if (m["wpm"] > 180 and m["words"] >= 25) else 0
+            issue = None
+            if m["fillers"] >= 3:
+                words = ", ".join(f"'{w}'" for w in dict.fromkeys(m["filler_words"]))
+                issue = ("filler", f"{m['fillers']} filler words in 30s ({words}).",
+                         {"metric": "filler_count_30s", "threshold": ">=3", "measured": m["fillers"]})
+            elif fast_checks >= 2:
+                issue = ("pace", f"Speaking at {m['wpm']:.0f} words per minute.",
+                         {"metric": "wpm_20s", "threshold": ">180", "measured": m["wpm"]})
+            if issue:
+                issue_type, description, evidence = issue
+                evidence["sensor"] = "transcript_metrics"
+                if state.flag_issue_fn(issue_type, description, evidence).get("recorded"):
+                    fast_checks = 0
+                    logger.info("practice_measured_issue session=%s %s", state.session_id, description)
+        issue_at, issue_type = state.last_confirmed_issue_time, state.last_confirmed_issue_type
+        if not issue_at or issue_at == followed_up or time.monotonic() - issue_at < VOICE_FOLLOWUP_AFTER_S:
+            continue
+        followed_up = issue_at
+        cue = _PRACTICE_CUES.get(issue_type)
+        if not cue or state.last_coach_speech_time >= issue_at:
+            continue   # coach already spoke, or the issue has its own cue path (eye contact)
+        # The live model, told to measure before speaking, tends to call tools instead of
+        # voicing a requested cue — so the browser speaks it (speak=True) with its own voice.
+        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue, "speak": True})
+        logger.info("voice_followup session=%s issue=%s cue=%r", state.session_id, issue_type, cue)
+
+
+async def _meeting_nudge_watcher(state: SessionState, live_request_queue: LiveRequestQueue) -> None:
+    """
+    Meeting mode real-time coaching, independent of the live model's own turn-taking:
+    - every 3 s: fillers, sustained fast pace and flat/boring tone from measurements;
+    - every ~25 s of new speech: a content check of the recent You/Them conversation
+      (off-topic, rambling, unclear, hedging, contradiction) answered by the live model.
+    All nudges go through flag_issue cooldowns, so they stay rare.
+    """
+    fast_checks = 0
+    flat_checks = 0
+    last_check_at = time.monotonic()
+    words_at_last_check = 0
+    last_coverage_at = time.monotonic()
+    words_at_last_coverage = 0
+    last_mood_at = time.monotonic()
+    them_words_at_last_mood = 0
+    while not state.live_closed and state.is_active:
+        await asyncio.sleep(3.0)
+        if state.live_closed or not callable(state.flag_issue_fn):
+            continue
+        _maybe_brief_reminder(state)
+        them_words = sum(len(seg["t"].split()) for seg in state.transcript if seg.get("s") == "o")
+        if time.monotonic() - last_mood_at >= 30.0 and them_words - them_words_at_last_mood >= 12:
+            last_mood_at, them_words_at_last_mood = time.monotonic(), them_words
+            asyncio.get_running_loop().create_task(_run_mood_check(state))
+        now_c = time.monotonic()
+        if (
+            state.brief_points and now_c - last_coverage_at >= 30.0
+            and state.user_word_count() - words_at_last_coverage >= 15
+        ):
+            last_coverage_at, words_at_last_coverage = now_c, state.user_word_count()
+            asyncio.get_running_loop().create_task(_run_coverage_check(state))
+
+        m = state.recent_speech_metrics()
+        prosody = state.prosody_metrics
+        fast_checks = fast_checks + 1 if (m["wpm"] > 180 and m["words"] >= 25) else 0
+        voiced = float(prosody.get("voiced_seconds_20s") or 0.0)
+        flat_checks = flat_checks + 1 if (voiced >= 8 and float(prosody.get("monotony_score") or 0) >= 75) else 0
+
+        issue = None
+        if m["fillers"] >= 3:
+            words = ", ".join(f"'{w}'" for w in dict.fromkeys(m["filler_words"]))
+            issue = ("filler", f"{m['fillers']} filler words in 30s ({words}).",
+                     {"metric": "filler_count_30s", "threshold": ">=3", "measured": m["fillers"]})
+        elif fast_checks >= 2:   # sustained for ~6s, not one rushed sentence
+            issue = ("pace", f"Speaking at {m['wpm']:.0f} words per minute.",
+                     {"metric": "wpm_20s", "threshold": ">180", "measured": m["wpm"]})
+        elif flat_checks >= 4:   # ~12s of flat delivery
+            issue = ("monotone", "Flat, low-variation tone for the last 20 seconds.",
+                     {"metric": "monotony_score", "threshold": ">=75", "measured": prosody.get("monotony_score")})
+        if issue:
+            issue_type, description, evidence = issue
+            evidence["sensor"] = "voice_and_transcript_metrics"
+            result = state.flag_issue_fn(issue_type, description, evidence)
+            if result.get("recorded"):
+                fast_checks = flat_checks = 0
+                cue = _MEASURED_CUES.get(issue_type) or _CONTENT_DEFAULT_CUES.get(issue_type, "")
+                state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue})
+                logger.info("meeting_nudge session=%s issue=%s %s", state.session_id, issue_type, description)
+                continue
+
+        # Conversation-level check by the live model.
+        now = time.monotonic()
+        pending = (
+            (state.content_check_sent_at and now - state.content_check_sent_at < CONTENT_CHECK_TIMEOUT_S)
+            or (state.hint_sent_at and now - state.hint_sent_at < HINT_TIMEOUT_S)
+        )
+        new_words = state.user_word_count() - words_at_last_check
+        if not pending and now - last_check_at >= CONTENT_CHECK_INTERVAL_S and new_words >= CONTENT_CHECK_MIN_NEW_WORDS:
+            last_check_at = now
+            words_at_last_check = state.user_word_count()
+            state.content_check_sent_at = now
+            asyncio.get_running_loop().create_task(
+                _run_content_check(state, live_request_queue, _content_check_prompt(state))
+            )
+            logger.info("content_check_sent session=%s new_words=%d", state.session_id, new_words)
+
+
+def _handle_confirmed_lookaway(
+    state: SessionState,
+    live_request_queue: LiveRequestQueue,
+    confirmed: dict,
+) -> None:
+    """
+    Turn a look-away measured by browser face tracking into a coaching moment.
+
+    The issue is recorded server-side (through flag_issue's gates/cooldowns) rather
+    than by asking the live model to call a tool: the native-audio model tends to
+    *speak* the tool call as text ("tool_code ...") instead of emitting one. When the
+    gates pass, the model is only asked to say a fixed short cue out loud.
+    """
+    gaze = confirmed["gaze"]
+    secs = confirmed["seconds_away"]
+    cue = _EYE_CUES.get(gaze, _EYE_CUES["away"])
+    description = f"Eye contact lost for {secs}s ({_GAZE_LABELS.get(gaze, gaze)})."
+    evidence = {
+        "metric": "seconds_away",
+        "threshold": f">={confirmed['threshold_s']}s",
+        "threshold_s": confirmed["threshold_s"],
+        "measured": secs,
+        "gaze": gaze,
+        "context": state.delivery_context,
+        "sensor": "browser_face_tracking",
+    }
+    result = state.flag_issue_fn("eye_contact", description, evidence) if callable(state.flag_issue_fn) else {}
+    if result.get("recorded") and state.session_kind == "meeting":
+        # In a real call the cue is shown silently in the bubble; no model turn needed.
+        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue})
+        logger.info("lookaway_cue session=%s cue=%r (meeting, silent)", state.session_id, cue)
+    elif result.get("recorded"):
+        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue})
+        live_request_queue.send_content(types.Content(role="user", parts=[types.Part(text=(
+            "[coach system] The presenter lost eye contact. Say exactly this sentence out loud "
+            f"and nothing else: \"{cue}\" Do not call any tools. Do not write code."
+        ))]))
+        logger.info("lookaway_cue session=%s cue=%r", state.session_id, cue)
+    else:
+        # Cooldown/gate active: keep the measurement as a silent coaching note.
+        state.record_event("eye_contact", description, evidence, source="sensor")
+        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue, "silent": True})
+        logger.info(
+            "lookaway_noted_silently session=%s reason=%s",
+            state.session_id, result.get("reason", "no_flag_fn"),
+        )
+
 
 async def _upstream(
     websocket: WebSocket,
@@ -1067,9 +1989,15 @@ async def _upstream(
                 payload = bytes(data[1:])
 
                 if msg_type == _T_AUDIO_IN:
-                    live_request_queue.send_realtime(
-                        types.Blob(data=payload, mime_type="audio/pcm;rate=16000")
-                    )
+                    # The dedicated transcriber writes the presenter's words. The coaching
+                    # model hears the mic in practice mode; in a meeting it works from the
+                    # text transcript (content checks), unless transcription failed.
+                    if state.user_stt is not None:
+                        state.user_stt.push(payload)
+                    if state.session_kind != "meeting" or not state.user_stt_active():
+                        live_request_queue.send_realtime(
+                            types.Blob(data=payload, mime_type="audio/pcm;rate=16000")
+                        )
                     features = _audio_chunk_features(payload)
                     prosody = state.update_prosody(
                         rms=features["rms"],
@@ -1092,6 +2020,14 @@ async def _upstream(
                                 threshold=">=70",
                                 source="raw_audio",
                             )
+                elif msg_type == _T_OTHER_AUDIO_IN:
+                    if state.session_kind != "meeting":
+                        continue
+                    if state.other_stt is not None:
+                        if state.other_stt_task is None:
+                            state.other_stt_task = asyncio.get_running_loop().create_task(state.other_stt.run())
+                            logger.info("meeting_audio_started session=%s", state.session_id)
+                        state.other_stt.push(payload)
                 elif msg_type == _T_VIDEO_IN:
                     live_request_queue.send_realtime(
                         types.Blob(data=payload, mime_type="image/jpeg")
@@ -1123,7 +2059,10 @@ async def _upstream(
             # Graceful fallback: text "stop" message
             elif "text" in frame and frame["text"]:
                 text = frame["text"]
-                if len(text) > WS_MAX_TEXT_FRAME_BYTES:
+                frame_limit = (
+                    _BRIEF_MAX_FRAME_BYTES if text.startswith('{"type":"brief"') else WS_MAX_TEXT_FRAME_BYTES
+                )
+                if len(text) > frame_limit:
                     logger.warning("WS text frame too large session=%s bytes=%d", state.session_id, len(text))
                     await websocket.close(code=1009, reason="Text frame too large")
                     break
@@ -1137,6 +2076,28 @@ async def _upstream(
                     msg_type = payload_json.get("type")
                     if msg_type == "stop":
                         break
+                    if msg_type == "brief" and state.session_kind == "meeting":
+                        _apply_brief(state, payload_json)
+                        continue
+                    if msg_type == "help" and state.session_kind == "meeting":
+                        _request_help(state, str(payload_json.get("kind") or ""))
+                        continue
+                    if msg_type == "nudge_feedback":
+                        _rate_nudge(state, payload_json.get("index"), payload_json.get("useful"))
+                        continue
+                    if msg_type == "interruption" and state.session_kind == "meeting":
+                        _record_interruption(state, payload_json.get("overlap_s"))
+                        continue
+                    if msg_type == "gaze":
+                        confirmed = state.update_browser_gaze(str(payload_json.get("state") or ""))
+                        if confirmed:
+                            logger.info(
+                                "browser_gaze_confirmed session=%s gaze=%s seconds=%.1f streaks=%d",
+                                state.session_id, confirmed["gaze"], confirmed["seconds_away"],
+                                state.browser_gaze_streaks,
+                            )
+                            _handle_confirmed_lookaway(state, live_request_queue, confirmed)
+                        continue
                     if msg_type == "slide_index":
                         total = int(payload_json.get("total_slides") or 0)
                         idx = int(payload_json.get("current_slide_index") or 0)
@@ -1150,6 +2111,9 @@ async def _upstream(
                 break
 
     finally:
+        for stt in (state.user_stt, state.other_stt):
+            if stt is not None:
+                stt.close()
         live_request_queue.close()
 
 
@@ -1254,7 +2218,22 @@ async def _downstream(
     _turn_committed: bool = False     # True → we already decided for this turn
     _in_audio_stream: bool = False    # True → currently receiving audio for an utterance
     _turn_index: int = 1
-    _turn_word_count: int = 0         # Cumulative word count for current coach turn
+    _turn_text: str = ""              # Coach transcription accumulated for the current turn
+    _pending_coach_chunks: list[str] = []  # coach text that arrived before the turn's gate decision
+    _user_chunk_seen: bool = False    # partial user transcription seen since the last "finished"
+    _coach_chunk_seen: bool = False   # partial coach transcription seen since the last "finished"
+    _meeting_reply: str = ""          # meeting mode: model text for the pending content check
+    # Transcript of the presenter from the coach model's own input transcription —
+    # only used when the dedicated transcriber is off or failed.
+    _heard = "user"
+
+    async def _emit_coach_chunk(chunk: str) -> None:
+        """Store + forward an allowed coach transcription chunk and attach it to the latest coaching event."""
+        state.add_transcript("coach", chunk, raw=True)
+        await websocket.send_json({"type": "transcript", "speaker": "coach", "text": chunk, "raw": True})
+        said = state.attach_coach_said(chunk)
+        if said:
+            await websocket.send_json({"type": "coach_said", **said})
 
     # Reply-level observability for docker logs.
     _reply_index: int = 0
@@ -1384,6 +2363,10 @@ async def _downstream(
                                     "allowed",
                                     f"cooldown_pass_issue={state.last_confirmed_issue_type or 'unknown'}",
                                 )
+                                if _pending_coach_chunks and not looks_like_tool_text("".join(_pending_coach_chunks)):
+                                    for _chunk in _pending_coach_chunks:
+                                        await _emit_coach_chunk(_chunk)
+                                _pending_coach_chunks.clear()
                                 logger.debug(
                                     "Coach speech allowed (%.1fs since last)", elapsed
                                 )
@@ -1428,8 +2411,11 @@ async def _downstream(
                             if part.inline_data and part.inline_data.data:
                                 _reply_chunks += 1
                                 _reply_bytes += len(part.inline_data.data)
-                                frame = bytes([_T_AUDIO_OUT]) + part.inline_data.data
-                                await websocket.send_bytes(frame)
+                                # Meeting mode: the coach must never be heard in the call —
+                                # its words reach the presenter as text only.
+                                if state.session_kind != "meeting":
+                                    frame = bytes([_T_AUDIO_OUT]) + part.inline_data.data
+                                    await websocket.send_bytes(frame)
                         await _emit_status("coaching")
                 else:
                     # Non-audio content event (e.g. function_call) — marks a gap
@@ -1439,57 +2425,85 @@ async def _downstream(
                     _in_audio_stream = False
 
             # ── User speech transcription ──────────────────────────────
-            if event.input_transcription and event.input_transcription.text:
-                text = _sanitize_transcript_text(event.input_transcription.text)
-                if text:
-                    state.add_transcript("user", text)
-                    await websocket.send_json({"type": "transcript", "speaker": "user", "text": text})
+            # ADK streams sub-word chunks (finished=False, partial=True) and then repeats
+            # the whole utterance once more with finished=True. Only the chunks are kept
+            # (concatenated as-is, they carry their own spacing); the finished copy is a
+            # duplicate and used only as an utterance boundary.
+            if event.input_transcription and event.input_transcription.text and not state.user_stt_active():
+                if getattr(event.input_transcription, "finished", False):
+                    if not _user_chunk_seen:
+                        text = _sanitize_transcript_text(event.input_transcription.text)
+                        if text:
+                            state.add_transcript(_heard, text)
+                            await websocket.send_json({"type": "transcript", "speaker": _heard, "text": text})
+                    _user_chunk_seen = False
+                    await websocket.send_json({"type": "transcript_end", "speaker": _heard})
+                else:
+                    chunk = _sanitize_transcript_chunk(event.input_transcription.text)
+                    if chunk:
+                        _user_chunk_seen = True
+                        state.add_transcript(_heard, chunk, raw=True)
+                        await websocket.send_json({"type": "transcript", "speaker": _heard, "text": chunk, "raw": True})
 
             # ── Coach speech transcription ─────────────────────────────
-            # Only forward when we're actually sending audio for this turn.
+            # Only forwarded/stored when the turn's audio was allowed through the gate.
             if event.output_transcription and event.output_transcription.text:
-                text = _sanitize_transcript_text(event.output_transcription.text)
-                if text:
-                    # Hard word-count gate — enforce system-prompt "≤12 words" instruction
-                    # even when the model ignores it.  We allow a small buffer (20 words)
-                    # because transcription chunks may lag 1-2 events behind the audio.
-                    if not _suppress_turn:
-                        _turn_word_count += len(text.split())
-                        if _turn_word_count > MAX_COACH_WORDS_PER_TURN:
-                            _suppress_turn = True
-                            logger.info(
-                                "coach_speech_too_long session=%s words=%d limit=%d — suppressing remainder",
-                                state.session_id, _turn_word_count, MAX_COACH_WORDS_PER_TURN,
-                            )
+                finished = getattr(event.output_transcription, "finished", False)
+                if finished and _coach_chunk_seen:
+                    chunk = ""          # duplicate of the chunks already handled
+                elif finished:
+                    chunk = " " + _sanitize_transcript_text(event.output_transcription.text) + " "
+                else:
+                    chunk = _sanitize_transcript_chunk(event.output_transcription.text)
+                    _coach_chunk_seen = True
+                if finished:
+                    _coach_chunk_seen = False
 
-                    if not _suppress_turn:
+                if state.session_kind == "meeting":
+                    # Never voiced or shown as-is in a meeting; collected only as the
+                    # answer to a content check, parsed at turn end.
+                    _meeting_reply += chunk
+                    chunk = ""
+
+                if chunk.strip():
+                    _turn_text += chunk
+                    if not _suppress_turn and looks_like_tool_text(_turn_text):
+                        # The model verbalised a tool call instead of making one.
+                        _suppress_turn = True
+                        _turn_committed = True
+                        logger.info(
+                            "coach_tool_text_suppressed session=%s turn=%d preview=%r",
+                            state.session_id, _turn_index, _turn_text.strip()[:120],
+                        )
+                    # Hard word-count gate — enforce the short-correction rule even when
+                    # the model ignores it.
+                    if not _suppress_turn and len(_turn_text.split()) > MAX_COACH_WORDS_PER_TURN:
+                        _suppress_turn = True
+                        logger.info(
+                            "coach_speech_too_long session=%s words=%d limit=%d — suppressing remainder",
+                            state.session_id, len(_turn_text.split()), MAX_COACH_WORDS_PER_TURN,
+                        )
+
+                    if _suppress_turn:
+                        # Suppressed speech never reached the presenter, so it is not
+                        # added to the transcript (or the post-session report input).
                         if not _reply_preview_logged:
-                            preview = text if len(text) <= 160 else f"{text[:157]}..."
-                            logger.info(
-                                "coach_reply_text session=%s turn=%d reply=%d words=%d preview=%r",
-                                state.session_id,
-                                _turn_index,
-                                _reply_index,
-                                len(text.split()),
-                                preview,
-                            )
-                            _reply_preview_logged = True
-                        state.add_transcript("coach", text)
-                        await websocket.send_json({"type": "transcript", "speaker": "coach", "text": text})
-                    else:
-                        # Suppressed turn: still record what the coach said so the
-                        # synthesis agent can reference it in the delivery analysis.
-                        state.add_transcript("coach", text)
-                        if not _reply_preview_logged:
-                            preview = text if len(text) <= 120 else f"{text[:117]}..."
                             logger.info(
                                 "coach_reply_text_suppressed session=%s turn=%d reply=%d preview=%r",
-                                state.session_id,
-                                _turn_index,
-                                _reply_index,
-                                preview,
+                                state.session_id, _turn_index, _reply_index, _turn_text.strip()[:120],
                             )
                             _reply_preview_logged = True
+                    elif not _turn_committed:
+                        # Text can arrive before the first audio chunk decides the gate.
+                        _pending_coach_chunks.append(chunk)
+                    else:
+                        if not _reply_preview_logged:
+                            logger.info(
+                                "coach_reply_text session=%s turn=%d reply=%d preview=%r",
+                                state.session_id, _turn_index, _reply_index, _turn_text.strip()[:160],
+                            )
+                            _reply_preview_logged = True
+                        await _emit_coach_chunk(chunk)
 
             # ── Turn complete — reset per-turn gate ────────────────────
             if event.turn_complete:
@@ -1498,7 +2512,11 @@ async def _downstream(
                 _suppress_turn = False
                 _turn_committed = False
                 _in_audio_stream = False
-                _turn_word_count = 0
+                _turn_text = ""
+                _pending_coach_chunks.clear()
+                if _meeting_reply.strip():
+                    _handle_meeting_reply(state, _meeting_reply)
+                _meeting_reply = ""
                 logger.info("coach_turn_complete session=%s turn=%d", state.session_id, _turn_index)
                 _turn_index += 1
                 await _emit_status("listening")
@@ -1544,20 +2562,33 @@ async def _drain_tool_events(websocket: WebSocket, state: SessionState):
 
 # ── Post-session analysis pipeline ───────────────────────────────
 
-_POST_AGENT_TIMEOUT_S = 90  # per-agent hard ceiling; google_search can be slow
+# Per-model attempt ceiling. Preview models are sometimes overloaded and hang until a
+# 504; rather than wait, the agent is retried on the next fallback model.
+_POST_AGENT_TIMEOUT_S = max(10, _int_env("POST_AGENT_TIMEOUT_S", 40))
+# Tried in order after the agent's own model fails, times out or is overloaded.
+_FALLBACK_MODELS = [
+    m.strip() for m in os.getenv(
+        "PITCHMIRROR_FALLBACK_MODELS", "gemini-3.5-flash,gemini-2.5-flash,gemini-3.1-flash-lite"
+    ).split(",") if m.strip()
+]
 
-async def _run_single_agent(agent, message: str) -> str:
+class _QuotaExhausted(Exception):
+    """Raised by _run_single_agent(raise_quota=True) on a 429 RESOURCE_EXHAUSTED."""
+
+
+async def _run_single_agent(agent, message: str, *, raise_quota: bool = False) -> str:
     """
     Run one post-session LlmAgent in an isolated session and return its text output.
 
     Each call creates a fresh InMemorySessionService + Runner so concurrent
     agent runs (via asyncio.gather) don't share session state.
-    A hard timeout prevents a hung agent (e.g. google_search) from blocking
-    the entire post-session pipeline indefinitely.
+    Each model attempt has a hard timeout; on timeout, overload (503/504) or quota
+    errors the same agent is re-run on the next model in _FALLBACK_MODELS, so one
+    slow preview model can't stall the whole report.
     """
-    async def _run() -> str:
+    async def _run(run_agent) -> str:
         service = InMemorySessionService()
-        runner = Runner(app_name=POST_APP_NAME, agent=agent, session_service=service)
+        runner = Runner(app_name=POST_APP_NAME, agent=run_agent, session_service=service)
         sid = uuid.uuid4().hex
         await service.create_session(app_name=POST_APP_NAME, user_id="presenter", session_id=sid)
         parts: list[str] = []
@@ -1572,14 +2603,45 @@ async def _run_single_agent(agent, message: str) -> str:
                         parts.append(part.text)
         return parts[-1] if parts else ""
 
-    try:
-        return await asyncio.wait_for(_run(), timeout=_POST_AGENT_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        logger.warning("Post-session agent %s timed out after %ds", agent.name, _POST_AGENT_TIMEOUT_S)
-        return ""
-    except Exception as exc:
-        logger.warning("Post-session agent %s failed: %s", agent.name, exc)
-        return ""
+    if claude_client.claude_enabled():
+        started = time.monotonic()
+        try:
+            text = await claude_client.report_text(str(agent.instruction), message)
+            logger.info("Post-session agent %s done on Claude in %.1fs", agent.name, time.monotonic() - started)
+            return text
+        except Exception as exc:
+            logger.warning(
+                "Post-session agent %s failed on Claude after %.1fs (%s) — falling back to Gemini",
+                agent.name, time.monotonic() - started, str(exc)[:160],
+            )
+
+    models = [agent.model] + [m for m in _FALLBACK_MODELS if m != agent.model]
+    quota_hits = 0
+    for attempt, model in enumerate(models):
+        run_agent = agent if attempt == 0 else agent.clone(update={"model": model})
+        started = time.monotonic()
+        try:
+            result = await asyncio.wait_for(_run(run_agent), timeout=_POST_AGENT_TIMEOUT_S)
+            if attempt:
+                logger.info("Post-session agent %s succeeded on fallback model %s", agent.name, model)
+            if result.strip() or attempt == len(models) - 1:
+                return result
+            logger.warning("Post-session agent %s returned nothing on %s — trying next model", agent.name, model)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Post-session agent %s timed out on %s after %ds — trying next model",
+                agent.name, model, _POST_AGENT_TIMEOUT_S,
+            )
+        except Exception as exc:
+            if "RESOURCE_EXHAUSTED" in str(exc):
+                quota_hits += 1
+            logger.warning(
+                "Post-session agent %s failed on %s after %.1fs: %s",
+                agent.name, model, time.monotonic() - started, str(exc)[:160],
+            )
+    if raise_quota and quota_hits == len(models):
+        raise _QuotaExhausted(f"all models exhausted for {agent.name}")
+    return ""
 
 
 async def _run_with_validation(
@@ -1593,9 +2655,17 @@ async def _run_with_validation(
     Run an agent and validate the output meets minimum quality requirements.
     If output is empty or too short, retry once with a repair prompt.
     """
-    result = await _run_single_agent(agent, message)
+    try:
+        result = await _run_single_agent(agent, message, raise_quota=True)
+    except _QuotaExhausted:
+        # Retrying immediately only burns more quota on the same rate limit.
+        logger.warning("Agent %s hit API quota — skipping repair retry", agent.name)
+        return ""
     if len((result or "").strip()) >= min_chars:
         return result
+    if not (result or "").strip():
+        # Every model already failed or timed out — a repair prompt won't help.
+        return ""
 
     logger.warning(
         "Agent %s returned insufficient output (%d chars < %d min) — retrying with repair prompt",
@@ -1610,9 +2680,84 @@ async def _run_with_validation(
     return await _run_single_agent(agent, repair_message)
 
 
+def _parse_recap(raw: str) -> dict:
+    """Parse the recap agent's JSON (tolerating fences); keep only known, well-typed fields."""
+    text = re.sub(r"^```(?:json)?|```$", "", (raw or "").strip(), flags=re.MULTILINE).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start:end + 1])
+    except (ValueError, TypeError):
+        logger.warning("Recap JSON could not be parsed")
+        return {}
+
+    def str_list(key: str) -> list[str]:
+        return [str(x).strip() for x in data.get(key) or [] if str(x).strip()][:15]
+
+    actions = []
+    for item in data.get("action_items") or []:
+        if isinstance(item, dict) and str(item.get("task") or "").strip():
+            actions.append({
+                "owner": str(item.get("owner") or "").strip(),
+                "task": str(item["task"]).strip(),
+                "due": str(item.get("due") or "").strip(),
+            })
+    email = data.get("follow_up_email") if isinstance(data.get("follow_up_email"), dict) else {}
+    return {
+        "summary": str(data.get("summary") or "").strip(),
+        "decisions": str_list("decisions"),
+        "action_items": actions[:15],
+        "open_questions": str_list("open_questions"),
+        "client_signals": str_list("client_signals"),
+        "follow_up_email": {
+            "subject": str(email.get("subject") or "").strip(),
+            "body": str(email.get("body") or "").strip(),
+        },
+    }
+
+
+def _merge_qa_review(pairs: list[dict], raw: str, hints: list[dict]) -> list[dict]:
+    """Combine Q/A pairs with the reviewer's JSON (tolerating fences/garbage) and live hints."""
+    reviews: dict[int, dict] = {}
+    text = (raw or "").strip()
+    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+    start, end = text.find("["), text.rfind("]")
+    if start != -1 and end > start:
+        try:
+            for item in json.loads(text[start:end + 1]):
+                if isinstance(item, dict) and isinstance(item.get("index"), int):
+                    reviews[item["index"]] = item
+        except (ValueError, TypeError):
+            logger.warning("Q&A review JSON could not be parsed")
+    merged = []
+    for i, p in enumerate(pairs):
+        r = reviews.get(i, {})
+        try:
+            rating = max(1, min(5, int(r.get("rating")))) if r.get("rating") is not None else None
+        except (TypeError, ValueError):
+            rating = None
+        hint = next((h for h in hints if h.get("question") and h["question"][:60] in p["question"]), None)
+        merged.append({
+            "question": p["question"],
+            "answer": p["answer"],
+            "ts": p.get("ts", 0),
+            "rating": rating,
+            "verdict": str(r.get("verdict") or ""),
+            "worked": str(r.get("worked") or ""),
+            "improve": str(r.get("improve") or ""),
+            "better_answer": str(r.get("better_answer") or ""),
+            "hint_points": hint["points"] if hint else [],
+        })
+    return merged
+
+
 async def _run_post_session(websocket: WebSocket, state: SessionState):
-    if not state.transcript and not state.events:
-        logger.info(f"No session data for {state.session_id} — skipping analysis")
+    if state.user_word_count() < MIN_SCORABLE_WORDS:
+        logger.info(
+            "Too little presenter speech for %s (%d words) — skipping analysis",
+            state.session_id, state.user_word_count(),
+        )
         state.research_tips = ""
         state.generated_assets = []
         return
@@ -1672,8 +2817,40 @@ async def _run_post_session(websocket: WebSocket, state: SessionState):
         logger.info("Post-session research done: %s", state.session_id)
         return result
 
-    delivery_out, content_out, research_out = await asyncio.gather(
-        run_delivery(), run_content(), run_research()
+    async def run_qa() -> None:
+        pairs = extract_qa_pairs(state.transcript)
+        if not pairs:
+            return
+        listing = "\n\n".join(
+            f"PAIR {i}\nQUESTION: {p['question']}\nANSWER: {p['answer']}" for i, p in enumerate(pairs)
+        )
+        raw = await _run_single_agent(
+            QA_REVIEW_AGENT,
+            f"MEETING TYPE: {state.coach_mode}\n\n{listing}",
+        )
+        state.qa_review = _merge_qa_review(pairs, raw, state.answer_hints)
+        await _safe_send(websocket, {"type": "pipeline_step", "step": "qa_done"})
+        logger.info("Post-session Q&A review done: %s (%d questions)", state.session_id, len(state.qa_review))
+
+    async def run_recap() -> None:
+        if state.session_kind != "meeting":
+            return
+        # Final coverage pass: points said in the last seconds missed the 30 s live check.
+        if any(not p["covered"] for p in state.brief_points):
+            await _run_coverage_check(state)
+        brief = meeting_brief.brief_context(state.brief_notes, state.brief_points, max_chars=3000)
+        raw = await _run_single_agent(
+            RECAP_AGENT,
+            f"MEETING TYPE: {state.coach_mode}\n"
+            + (f"PRE-CALL BRIEF:\n{brief}\n\n" if brief else "")
+            + f"TRANSCRIPT:\n{state.transcript_text()}",
+        )
+        state.recap = _parse_recap(raw)
+        await _safe_send(websocket, {"type": "pipeline_step", "step": "recap_done"})
+        logger.info("Post-session recap done: %s (%s)", state.session_id, "ok" if state.recap else "empty")
+
+    delivery_out, content_out, research_out, _, _ = await asyncio.gather(
+        run_delivery(), run_content(), run_research(), run_qa(), run_recap()
     )
 
     # Surface degraded-quality risk when agents silently returned empty strings.
@@ -1745,28 +2922,30 @@ async def _run_post_session(websocket: WebSocket, state: SessionState):
     )
     logger.info("Post-session synthesis done: %s", state.session_id)
 
-    # ── Session summary agent: write cross-session user skill profile ───
-    try:
-        profile_context = (
-            f"{synthesis_context}\n\n"
-            f"SYNTHESIS REPORT:\n{final_report_raw or ''}\n\n"
-            f"AI SCORES: {state.ai_scores}\n"
-        )
-        profile_json_str = await _run_single_agent(SESSION_SUMMARY_AGENT, profile_context)
-        if profile_json_str:
-            import json as _json
-            profile = _json.loads(profile_json_str.strip())
-            scorecard_preview = build_scorecard(state)
-            profile["session_score"] = int(scorecard_preview.get("overall_score", 0))
-            await _db.save_user_profile(state.user_id, profile)
-            await _safe_send(websocket, {"type": "pipeline_step", "step": "memory_updated"})
-            await _safe_send(
-                websocket,
-                {"type": "telemetry", "phase": "agent_step", "detail": "memory_updated", "data": {"agent": "session_summary_agent"}},
+    # ── Session summary agent: cross-session user skill profile ───────
+    # Runs after the scorecard has been sent (see websocket_endpoint): the presenter
+    # shouldn't wait for memory bookkeeping to see their review.
+    async def update_profile() -> None:
+        try:
+            profile_context = (
+                f"{synthesis_context}\n\n"
+                f"SYNTHESIS REPORT:\n{final_report_raw or ''}\n\n"
+                f"AI SCORES: {state.ai_scores}\n"
             )
-            logger.info("User profile updated for %s: %s", state.user_id, profile)
-    except Exception as e:
-        logger.warning("Session profile parse/save failed for %s: %s", state.session_id, e)
+            profile_json_str = await _run_single_agent(SESSION_SUMMARY_AGENT, profile_context)
+            if profile_json_str:
+                raw = re.sub(r"^```(?:json)?|```$", "", profile_json_str.strip(), flags=re.MULTILINE).strip()
+                start, end = raw.find("{"), raw.rfind("}")
+                profile = json.loads(raw[start:end + 1] if start != -1 else raw)
+                scorecard_preview = build_scorecard(state)
+                profile["session_score"] = int(scorecard_preview.get("overall_score", 0))
+                await _db.save_user_profile(state.user_id, profile)
+                logger.info("User profile updated for %s: %s", state.user_id, profile)
+        except Exception as e:
+            logger.warning("Session profile parse/save failed for %s: %s", state.session_id, e)
+
+    state.pending_profile_update = update_profile
+    await _safe_send(websocket, {"type": "pipeline_step", "step": "memory_updated"})
 
     generated_assets: list[dict] = []
     if ENABLE_IMAGE_GENERATION:
@@ -1817,6 +2996,13 @@ def _build_context_message(state: SessionState) -> str:
         "You are analyzing a completed PitchMirror coaching session.\n\n"
         f"USER ID: {state.user_id}\n"
         f"SESSION MODE: {state.coach_mode}\n"
+        + (
+            f"SESSION TYPE: LIVE MEETING on {state.platform or 'a video-call platform'} — a real "
+            "interview/pitch/call, not a rehearsal. Other participants may appear in the transcript as "
+            "'Presenter' (shared microphone); judge only the presenter's delivery. Coach nudges were "
+            "silent text, never heard by others.\n"
+            if state.session_kind == "meeting" else "SESSION TYPE: practice rehearsal\n"
+        ) +
         f"DELIVERY CONTEXT: {state.delivery_context}\n"
         f"PRIMARY GOAL: {state.primary_goal}\n"
         f"SCREEN SHARE ENABLED: {state.screen_enabled}\n"
@@ -1824,9 +3010,14 @@ def _build_context_message(state: SessionState) -> str:
         f"CURRENT SLIDE INDEX: {state.current_slide_index}\n"
         f"DEMO MODE: {state.demo_mode}\n\n"
         f"SESSION TRANSCRIPT:\n{state.transcript_text()}\n\n"
-        f"COACHING EVENTS (tool calls during live session):\n{state.events_json()}\n\n"
+        f"COACHING EVENTS (tool calls during live session):\n{state.events_json()}\n"
+        f"COACH ALERTS SPOKEN ALOUD: {sum(1 for e in state.events if e.coach_said)} of {len(state.events)} events. "
+        "Only events whose \"said\" field is set were voiced to the presenter; the rest were recorded "
+        "silently (cooldowns). Never claim the coach alerted or told the presenter something unless "
+        "\"said\" is set.\n"
+        f"LOOK-AWAYS MEASURED BY FACE TRACKING: {state.browser_gaze_streaks}\n\n"
         f"TIMELINE EVENTS (for replay):\n{state.timeline_json()}\n\n"
-        f"METRICS: fillers={state.filler_count} eye_drops={state.eye_contact_drops} "
+        f"METRICS: fillers={state.scored_filler_count()} eye_drops={state.scored_eye_drops()} "
         f"pace={state.pace_violations} contradictions={state.contradictions} "
         f"clarity={state.clarity_flags} slide_clarity={state.visual_flags} "
         f"slide_mismatch={state.mismatch_flags} duration={round(state.duration_seconds())}s\n"

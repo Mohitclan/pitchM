@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20261020i" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261020i" />
 </head>
 <body>
   <div id="app">
@@ -19,7 +20,12 @@
         <span class="logo-name">PitchMirror</span>
       </a>
       <div id="session-timer" class="session-timer hidden">00:00</div>
-      <div id="status-badge" class="status-badge idle">Idle</div>
+      <div class="header-right">
+        <span id="tester-slot"></span>
+        <a href="/meeting" class="header-meeting-link">Meeting Mode</a>
+        <button id="btn-history" type="button" class="header-history-btn">History</button>
+        <div id="status-badge" class="status-badge idle">Idle</div>
+      </div>
     </header>
 
     <!-- Main layout -->
@@ -169,36 +175,64 @@
       <!-- Right: Transcript + Analysis + Scorecard -->
       <section class="right-panel">
 
-        <!-- Transcript feed -->
-        <div id="transcript-panel" class="transcript-panel">
-          <div class="panel-header">
-            <span class="panel-header-dot"></span>
-            Live Transcript
-          </div>
-          <div id="transcript-feed" class="transcript-feed">
-            <!-- Pre-session welcome panel -->
-            <div id="welcome-panel" class="welcome-panel">
-              <div class="welcome-icon">◎</div>
-              <h2 class="welcome-title">Ready to rehearse?</h2>
-              <p class="welcome-subtitle">
-                Your AI coach listens, watches, and gives real-time speaking feedback.
-              </p>
-              <div class="welcome-checklist">
-                <div class="check-item">
-                  <span class="check-num">01</span>
-                  <span>Position yourself clearly in frame</span>
+        <!-- Live board: transcript (left) + coach suggestions (right) -->
+        <div id="live-board" class="live-board">
+          <div id="transcript-panel" class="transcript-panel">
+            <div class="panel-header">
+              <span class="panel-header-dot"></span>
+              Live Transcript
+              <span id="transcript-word-count" class="panel-count">0 words</span>
+            </div>
+            <div id="transcript-feed" class="transcript-feed">
+              <!-- Pre-session welcome panel -->
+              <div id="welcome-panel" class="welcome-panel">
+                <div class="welcome-icon">◎</div>
+                <h2 class="welcome-title">Ready to rehearse?</h2>
+                <p class="welcome-subtitle">
+                  Your AI coach listens, watches, and gives real-time speaking feedback.
+                  What you say appears here; coach suggestions appear on the right.
+                </p>
+                <div class="welcome-checklist">
+                  <div class="check-item">
+                    <span class="check-num">01</span>
+                    <span>Position yourself clearly in frame</span>
+                  </div>
+                  <div class="check-item">
+                    <span class="check-num">02</span>
+                    <span>Ensure good lighting and a quiet space</span>
+                  </div>
+                  <div class="check-item">
+                    <span class="check-num">03</span>
+                    <span>Open your talk notes, slides, or interview prompts</span>
+                  </div>
                 </div>
-                <div class="check-item">
-                  <span class="check-num">02</span>
-                  <span>Ensure good lighting and a quiet space</span>
-                </div>
-                <div class="check-item">
-                  <span class="check-num">03</span>
-                  <span>Open your talk notes, slides, or interview prompts</span>
-                </div>
+                <button id="btn-history-welcome" type="button" class="history-link">View past sessions</button>
               </div>
             </div>
           </div>
+
+          <div id="suggestions-panel" class="suggestions-panel">
+            <div class="panel-header">
+              <span class="panel-header-dot coach-dot"></span>
+              Coach Suggestions
+              <span id="suggestion-count" class="panel-count">0</span>
+            </div>
+            <div id="suggestions-feed" class="suggestions-feed">
+              <div class="suggestions-empty">
+                Coaching moments show up here while you speak — what was measured,
+                what the coach said, and how to fix it.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Past sessions -->
+        <div id="history-panel" class="history-panel hidden">
+          <div class="panel-header">
+            Past Sessions
+            <button id="btn-history-close" type="button" class="history-close">Back</button>
+          </div>
+          <div id="history-list" class="history-list"></div>
         </div>
 
         <!-- Post-session analysis pipeline -->
@@ -282,6 +316,9 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/tester.js?v=20261020i"></script>
+  <script src="/static/audio-leveler.js?v=20261020i"></script>
+  <script src="/static/gaze.js?v=20261020i"></script>
+  <script src="/static/app.js?v=20261020i"></script>
 </body>
 </html>

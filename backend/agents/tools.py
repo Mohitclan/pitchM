@@ -54,6 +54,12 @@ _GLOBAL_COOLDOWN_S = 30.0    # minimum seconds between any two interruptions
 _PER_TYPE_COOLDOWN_S = 90.0  # minimum seconds before repeating the same issue type
 
 _VALID_ISSUE_TYPES = frozenset({
+    # Conversation-level issues raised by meeting-mode content checks
+    "off_topic",
+    "rambling",
+    "monotone",
+    "confidence",
+    "interruption",
     "filler",
     "pace",
     "eye_contact",
@@ -81,6 +87,8 @@ def make_coaching_tools(state: "SessionState") -> list:
     # Late-binding ref: set after generate_live_visual_hint is defined so
     # flag_issue can auto-trigger it on slide issues without relying on the model.
     _visual_hint_fn: list = [None]
+    # True while server_flag_issue is calling flag_issue with an objective measurement.
+    _server_measured: list[bool] = [False]
     # Grounding gate: tracks last time a measurement tool was called.
     # contradiction and clarity require recent grounding before flag_issue accepts them.
     _last_grounding_time: list[float] = [0.0]
@@ -96,6 +104,10 @@ def make_coaching_tools(state: "SessionState") -> list:
     })
     global_cooldown_s = 5.0 if state.demo_mode else _GLOBAL_COOLDOWN_S
     per_type_cooldown_s = 20.0 if state.demo_mode else _PER_TYPE_COOLDOWN_S
+    if state.session_kind == "meeting":
+        # Silent text nudges interrupt far less than spoken ones, so allow them closer together.
+        global_cooldown_s = 12.0
+        per_type_cooldown_s = 60.0
 
     def _emit_telemetry(phase: str, detail: str, data: dict | None = None) -> None:
         state._enqueue({
@@ -248,7 +260,10 @@ def make_coaching_tools(state: "SessionState") -> list:
                     "grounding_age_s": round(grounding_age),
                 }
 
-        conf = _confidence_gate(issue_type)
+        conf = (
+            {"ok": True, "hits": ["server_measured"]}
+            if _server_measured[0] else _confidence_gate(issue_type)
+        )
         if not conf.get("ok", False):
             _emit_telemetry(
                 "gate_blocked",
@@ -461,6 +476,7 @@ def make_coaching_tools(state: "SessionState") -> list:
     # Mutable state for eye contact debounce — shared across check_eye_contact calls
     _gaze_away_since: list[float] = [0.0]   # monotonic timestamp when gaze drop started
     _gaze_currently_away: list[bool] = [False]
+    _gaze_streak_counted: list[bool] = [False]
 
     def check_eye_contact(gaze_direction: str) -> dict:
         """
@@ -504,8 +520,14 @@ def make_coaching_tools(state: "SessionState") -> list:
                 # Start of a new away streak
                 _gaze_currently_away[0] = True
                 _gaze_away_since[0] = now
+                _gaze_streak_counted[0] = False
             seconds_away = now - _gaze_away_since[0]
             confirmed = seconds_away >= _EYE_CONTACT_THRESHOLD_S
+            if confirmed and not _gaze_streak_counted[0]:
+                # Count each confirmed streak once for scoring, independent of
+                # whether the model's flag_issue call clears the cooldown gates.
+                _gaze_streak_counted[0] = True
+                state.gaze_away_streaks += 1
         else:
             # Gaze returned to camera — reset streak
             _gaze_currently_away[0] = False
@@ -854,6 +876,27 @@ def make_coaching_tools(state: "SessionState") -> list:
 
     # Bind the late reference so flag_issue can auto-trigger on slide issues
     _visual_hint_fn[0] = generate_live_visual_hint
+
+    def server_flag_issue(issue_type: str, description: str, evidence: dict | None = None) -> dict:
+        """
+        Flag an issue measured by the server (browser face tracking, transcript
+        metrics) through the same cooldowns as the model's flag_issue, without relying
+        on the live model to emit a function call. The value is already measured, so
+        the two-signal confidence gate is skipped.
+        """
+        _server_measured[0] = True
+        try:
+            result = flag_issue(issue_type, description)
+        finally:
+            _server_measured[0] = False
+        if result.get("recorded") and state.events:
+            event = state.events[-1]
+            event.source = "sensor"
+            if evidence:
+                event.evidence.update(evidence)
+        return result
+
+    state.flag_issue_fn = server_flag_issue
 
     return [
         flag_issue,

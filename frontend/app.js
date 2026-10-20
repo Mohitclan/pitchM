@@ -138,6 +138,16 @@ let _lastCoachLine = { normalized: '', at: 0 };
 const USER_DEDUP_WINDOW_MS = 10000;
 let _lastUserLine = { normalized: '', at: 0 };
 
+/* Live coach suggestions — one card per coaching moment, keyed by server event index */
+const _suggestionCards = new Map();
+const _pendingCoachSaid = new Map();
+let _suggestionCount = 0;
+const SUGGESTIONS_EMPTY_HTML = `
+  <div class="suggestions-empty">
+    Coaching moments show up here while you speak — what was measured,
+    what the coach said, and how to fix it.
+  </div>`;
+
 /* Session recovery — used to re-fetch scorecard if WS closes during analysis */
 let _currentSessionId = null;
 let _waitingForScorecard = false;
@@ -154,6 +164,12 @@ const videoOverlay    = document.getElementById('video-overlay');
 const recIndicator    = document.getElementById('recording-indicator');
 const transcriptFeed  = document.getElementById('transcript-feed');
 const transcriptPanel = document.getElementById('transcript-panel');
+const liveBoard       = document.getElementById('live-board');
+const suggestionsFeed = document.getElementById('suggestions-feed');
+const suggestionCountEl = document.getElementById('suggestion-count');
+const transcriptWordCountEl = document.getElementById('transcript-word-count');
+const historyPanel    = document.getElementById('history-panel');
+const historyList     = document.getElementById('history-list');
 const scorecardPanel  = document.getElementById('scorecard-panel');
 const scorecardContent = document.getElementById('scorecard-content');
 const coachToast      = document.getElementById('coach-toast');
@@ -509,7 +525,7 @@ async function startSession() {
   // 1. Get user media
   localStream = await navigator.mediaDevices.getUserMedia({
     video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT, facingMode: 'user' },
-    audio: { sampleRate: AUDIO_SAMPLE_RATE, channelCount: 1, echoCancellation: true },
+    audio: { ...window.PMAudio.MIC_CONSTRAINTS, sampleRate: AUDIO_SAMPLE_RATE },
   });
 
   video.srcObject = localStream;
@@ -543,8 +559,10 @@ async function startSession() {
   ws.onopen = () => {
     console.log('WebSocket connected');
     sessionActive = true;
+    window.__pmSessionActive = true;
     startAudioCapture();
     startVideoCapture();
+    startGazeTracking(sessionCfg.deliveryContext);
     if (sessionCfg.screenEnabled) startScreenCapture();
     if (uploadedSlides.length) sendCurrentUploadedSlideFrame();
     startTimer();
@@ -592,11 +610,16 @@ async function startSession() {
   if (primaryGoalSelect) primaryGoalSelect.disabled = true;
   if (screenShareToggle) screenShareToggle.disabled = true;
   if (demoModeToggle) demoModeToggle.disabled = true;
+  const historyBtn = document.getElementById('btn-history');
+  if (historyBtn) historyBtn.disabled = true;
   liveMetrics.classList.remove('hidden');
   if (_agentTelemetry) { _agentTelemetry.classList.remove('hidden'); _telemetryHistory.length = 0; }
   videoOverlay.classList.remove('hidden');
   recIndicator.classList.remove('hidden');
   transcriptFeed.innerHTML = '';
+  resetSuggestions();
+  if (transcriptWordCountEl) transcriptWordCountEl.textContent = '0 words';
+  historyPanel?.classList.add('hidden');
   _activeLine = { speaker: null, el: null };
   _lastCoachLine = { normalized: '', at: 0 };
   _lastUserLine  = { normalized: '', at: 0 };
@@ -609,63 +632,21 @@ async function startSession() {
   scorecardPanel.classList.add('hidden');
   document.querySelector('.right-panel')?.classList.remove('results-mode');
   document.getElementById('analysis-panel')?.classList.add('hidden');
-  transcriptPanel.classList.remove('hidden');
+  liveBoard?.classList.remove('hidden');
   setStatus('connected', `Connecting (${sessionCfg.mode.replace('_', ' ')})...`);
 }
 
 /* ── Audio capture (PCM 16kHz) ───────────────────── */
 async function startAudioCapture() {
   audioContext = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE });
-
-  // Use AudioWorklet for low-latency PCM capture
-  const workletCode = `
-    class PCMProcessor extends AudioWorkletProcessor {
-      constructor() {
-        super();
-        this._buffer = [];
-        this._bufferSize = ${Math.floor(AUDIO_SAMPLE_RATE * AUDIO_CHUNK_MS / 1000)};
-      }
-      process(inputs) {
-        const input = inputs[0][0];
-        if (!input) return true;
-        for (let i = 0; i < input.length; i++) {
-          this._buffer.push(input[i]);
-        }
-        while (this._buffer.length >= this._bufferSize) {
-          const chunk = this._buffer.splice(0, this._bufferSize);
-          this.port.postMessage(chunk);
-        }
-        return true;
-      }
-    }
-    registerProcessor('pcm-processor', PCMProcessor);
-  `;
-
-  const blob = new Blob([workletCode], { type: 'application/javascript' });
-  const url = URL.createObjectURL(blob);
-  try {
-    await audioContext.audioWorklet.addModule(url);
-  } finally {
-    // Revoke unconditionally — success or failure — to avoid blob URL leak.
-    URL.revokeObjectURL(url);
-  }
-
-  const source = audioContext.createMediaStreamSource(localStream);
-  audioWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
-  audioWorkletSink = audioContext.createGain();
-  audioWorkletSink.gain.value = 0;
-
-  audioWorklet.port.onmessage = (e) => {
+  // Mic → high-pass → leveller (quiet speech boosted, loud speech held back) → server.
+  audioWorklet = await window.PMAudio.createLeveler(audioContext, localStream, (chunk) => {
     if (!sessionActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (Date.now() < _cueSpeakingUntil) return;   // don't transcribe the coach's spoken cue
     // Convert float32 → int16 PCM, send as binary frame — no JSON, no base64
-    const pcm16 = float32ToInt16(e.data);
+    const pcm16 = float32ToInt16(chunk.pcm);
     ws.send(makeFrame(T_AUDIO_IN, pcm16.buffer));
-  };
-
-  source.connect(audioWorklet);
-  // Keep the worklet in a live graph without echoing mic audio to speakers.
-  audioWorklet.connect(audioWorkletSink);
-  audioWorkletSink.connect(audioContext.destination);
+  }, { kind: 'mic', chunkSamples: Math.floor(AUDIO_SAMPLE_RATE * AUDIO_CHUNK_MS / 1000) });
 }
 
 function float32ToInt16(float32Array) {
@@ -696,6 +677,67 @@ function startVideoCapture() {
     }, 'image/jpeg', VIDEO_QUALITY);
   }, 1000 / VIDEO_FPS);
 }
+
+/* ── Gaze tracking (in-browser face landmarks) ───── */
+// Reports camera / away / notes / no_face to the server, which times look-away
+// streaks for the scorecard. Also drives the eye-contact badge on the video.
+const GAZE_LABELS = { camera: 'Camera OK', away: 'Looking away', notes: 'Looking down', no_face: 'No face' };
+const GAZE_WARN_AFTER_S = { virtual: 5, hybrid: 6.5, in_person: 8 };
+let _gazeState = 'camera';
+let _gazeSince = 0;
+let _gazeBadgeTimer = null;
+
+function _gazeDisengaged(state, context) {
+  return state === 'notes' || state === 'no_face' || (state === 'away' && context === 'virtual');
+}
+
+function _renderGazeBadge(context) {
+  const badge = document.getElementById('eye-indicator');
+  const label = document.getElementById('eye-label');
+  if (!badge || !label) return;
+  const secs = (performance.now() - _gazeSince) / 1000;
+  const disengaged = _gazeDisengaged(_gazeState, context);
+  const limit = GAZE_WARN_AFTER_S[context] || 5;
+  badge.classList.remove('gaze-warn', 'gaze-bad', 'gaze-off');
+  if (disengaged) badge.classList.add(secs >= limit ? 'gaze-bad' : 'gaze-warn');
+  label.textContent = disengaged && secs >= 1
+    ? `${GAZE_LABELS[_gazeState]} ${Math.floor(secs)}s`
+    : (GAZE_LABELS[_gazeState] || 'Camera OK');
+}
+
+function startGazeTracking(context) {
+  if (!window.GazeTracker) return;
+  _gazeState = 'camera';
+  _gazeSince = performance.now();
+  const label = document.getElementById('eye-label');
+  if (label) label.textContent = 'Starting gaze tracking…';
+  window.GazeTracker.start(video, (state) => {
+    if (state !== _gazeState) { _gazeState = state; _gazeSince = performance.now(); }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'gaze', state }));
+    }
+  }).then((ok) => {
+    if (!ok) {
+      const badge = document.getElementById('eye-indicator');
+      if (badge) badge.classList.add('gaze-off');
+      if (label) label.textContent = 'Gaze tracking unavailable';
+      return;
+    }
+    _gazeBadgeTimer = setInterval(() => _renderGazeBadge(context), 500);
+  });
+}
+
+function stopGazeTracking() {
+  if (window.GazeTracker) window.GazeTracker.stop();
+  if (_gazeBadgeTimer) { clearInterval(_gazeBadgeTimer); _gazeBadgeTimer = null; }
+  const badge = document.getElementById('eye-indicator');
+  const label = document.getElementById('eye-label');
+  if (badge) badge.classList.remove('gaze-warn', 'gaze-bad', 'gaze-off');
+  if (label) label.textContent = 'Camera OK';
+}
+
+// Warm the face model while the user fills in the intake form.
+window.GazeTracker?.preload();
 
 /* ── Screen-share capture (optional) ─────────────── */
 async function startScreenStream() {
@@ -810,6 +852,7 @@ async function tryRecoverScorecard(sessionId) {
 /* ── Session stop ────────────────────────────────── */
 function stopSession() {
   sessionActive = false;
+  window.__pmSessionActive = false;
 
   stopTimer();
   if (videoWrapper) videoWrapper.classList.remove('recording');
@@ -819,8 +862,9 @@ function stopSession() {
   }
 
   if (videoInterval) { clearInterval(videoInterval); videoInterval = null; }
+  stopGazeTracking();
   stopScreenCapture();
-  if (audioWorklet)  { audioWorklet.disconnect(); audioWorklet = null; }
+  if (audioWorklet)  { audioWorklet.port.onmessage = null; audioWorklet.pmSource?.disconnect(); audioWorklet.disconnect(); audioWorklet = null; }
   if (audioWorkletSink) { audioWorkletSink.disconnect(); audioWorkletSink = null; }
   if (audioContext)  { audioContext.close(); audioContext = null; }
   if (coachAudioContext) {
@@ -839,12 +883,36 @@ function stopSession() {
   if (primaryGoalSelect) primaryGoalSelect.disabled = false;
   if (screenShareToggle) screenShareToggle.disabled = !SUPPORTS_SCREEN_SHARE;
   if (demoModeToggle) demoModeToggle.disabled = false;
+  const historyBtn = document.getElementById('btn-history');
+  if (historyBtn) historyBtn.disabled = false;
   recIndicator.classList.add('hidden');
   setStatus('idle', 'Session ended');
 }
 
+/* ── Spoken cue fallback (browser voice) ─────────── */
+let _lastCoachAudioAt = 0;
+let _cueSpeakingUntil = 0;   // mic chunks are not sent while a cue plays (avoids echo in the transcript)
+
+function speakCue(text) {
+  showCoachToast(text);
+  addTranscriptLine('coach', text);
+  if (!('speechSynthesis' in window)) return;
+  if (Date.now() - _lastCoachAudioAt < 3000) return;   // the AI coach is already talking
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 1.05;
+  const voice = window.speechSynthesis.getVoices().find((v) => /en[-_](US|GB|IN)/i.test(v.lang) && /female|samantha|google/i.test(v.name))
+    || window.speechSynthesis.getVoices().find((v) => /^en/i.test(v.lang));
+  if (voice) u.voice = voice;
+  _cueSpeakingUntil = Date.now() + 6000;
+  u.onend = u.onerror = () => { _cueSpeakingUntil = Date.now() + 300; };
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
 /* ── Coach audio playback (PCM 24kHz) ───────────── */
 function playCoachAudio(pcmArrayBuffer) {
+  _lastCoachAudioAt = Date.now();
   if (!coachAudioContext) {
     coachAudioContext = new AudioContext({ sampleRate: COACH_SAMPLE_RATE });
     coachNextPlayAt = 0;
@@ -915,11 +983,36 @@ function handleServerMessage(event) {
       break;
 
     case 'transcript':
-      addTranscriptLine(msg.speaker, msg.text);
+      addTranscriptLine(msg.speaker, msg.text, !!msg.raw);
+      break;
+
+    case 'transcript_end':
+      // End of one spoken utterance — the next words start a new transcript line.
+      if (_activeLine.speaker === String(msg.speaker || '').toLowerCase()) {
+        _activeLine = { speaker: null, el: null };
+      }
+      break;
+
+    case 'coach_tip':
+      addSuggestionCard(msg);
+      break;
+
+    case 'coach_cue':
+      setSuggestionSaid(msg.index, msg.text, msg.silent ? 'quiet' : 'cue');
+      break;
+
+    case 'coach_said':
+      setSuggestionSaid(msg.index, msg.text, 'said');
       break;
 
     case 'metric':
       updateMetric(msg.key, msg.value);
+      break;
+
+    case 'coach_cue':
+      // The server asks the browser to voice a short correction when the AI coach
+      // flagged an issue but didn't speak.
+      if (msg.speak && msg.text) speakCue(msg.text);
       break;
 
     case 'tool_call':
@@ -1028,7 +1121,7 @@ function handleStatus(state, message) {
     liveMetrics.classList.add('hidden');
     if (_agentTelemetry) _agentTelemetry.classList.add('hidden');
     recIndicator.classList.add('hidden');
-    document.getElementById('transcript-panel').classList.add('hidden');
+    liveBoard?.classList.add('hidden');
     document.getElementById('analysis-panel').classList.remove('hidden');
 
     // Reset all steps to spinning — real completion events drive the done state
@@ -1105,76 +1198,242 @@ function coachChunkAlreadyRendered(existingText, incomingText) {
   return false;
 }
 
-function addTranscriptLine(speaker, text) {
-  const normalizedSpeaker = String(speaker || '').toLowerCase();
-  const cleanText = sanitizeTranscriptText(text);
-  if (!cleanText) return;
+function _sessionElapsedLabel() {
+  if (!sessionStartTime) return '';
+  return formatTime(Math.max(0, (Date.now() - sessionStartTime) / 1000));
+}
 
-  // Drop repeated coach lines (streaming retries).
-  if (normalizedSpeaker === 'coach' && isRecentCoachDuplicate(cleanText)) {
-    return;
-  }
-  // Drop repeated user lines — Gemini Live often re-sends the same input_transcription
-  // as a deferred final after the model responds (after tool calls reset _activeLine).
-  if (normalizedSpeaker === 'user' && isRecentUserDuplicate(cleanText)) {
-    return;
+/** Clean a streaming transcription chunk but keep its edge spaces (they mark word boundaries). */
+function cleanTranscriptChunk(value) {
+  return String(value || '')
+    .replace(/<ctrl\d+>/gi, ' ')
+    .replace(/<(spoken_[^>]*|noise|inaudible|unk|unknown)>/gi, ' ')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+let _wordCountFrame = 0;
+function scheduleWordCountUpdate() {
+  if (!transcriptWordCountEl || _wordCountFrame) return;
+  _wordCountFrame = requestAnimationFrame(() => {
+    _wordCountFrame = 0;
+    let words = 0;
+    transcriptFeed.querySelectorAll('.transcript-line.user .transcript-text').forEach((el) => {
+      const t = el.textContent.trim();
+      if (t) words += t.split(/\s+/).length;
+    });
+    transcriptWordCountEl.textContent = `${words} word${words === 1 ? '' : 's'}`;
+  });
+}
+
+/**
+ * Add speech to the live transcript.
+ * raw=true: a streaming sub-word chunk from the server; appended as-is because
+ * its own leading/trailing spaces mark word boundaries ("frien" + "dly").
+ */
+function addTranscriptLine(speaker, text, raw = false) {
+  const normalizedSpeaker = String(speaker || '').toLowerCase();
+  const chunk = raw ? cleanTranscriptChunk(text) : sanitizeTranscriptText(text);
+  if (!chunk) return;
+  const sameLine = _activeLine.speaker === normalizedSpeaker && _activeLine.el;
+  if (!chunk.trim() && !sameLine) return;
+
+  if (!raw) {
+    // Drop repeated coach lines (streaming retries).
+    if (normalizedSpeaker === 'coach' && isRecentCoachDuplicate(chunk)) return;
+    // Drop repeated user lines (deferred finals re-sent after the model responds).
+    if (normalizedSpeaker === 'user' && isRecentUserDuplicate(chunk)) return;
   }
 
   const welcomePanel = transcriptFeed.querySelector('#welcome-panel');
   if (welcomePanel) welcomePanel.remove();
 
-  // Accumulate consecutive chunks from the same speaker into one line.
-  // The Live API streams transcription incrementally, so "Look at the camera
-  // when presenting." arrives as several separate events — merge them.
-  if (_activeLine.speaker === normalizedSpeaker && _activeLine.el) {
-    const textEl = _activeLine.el.querySelector('.transcript-text');
-    if (textEl) {
-      if (normalizedSpeaker === 'coach' && coachChunkAlreadyRendered(textEl.textContent, cleanText)) {
-        return;
-      }
-      // Add a space unless the existing text ends with one or the new chunk starts with one
-      const needsSpace = textEl.textContent.length > 0
-        && !textEl.textContent.endsWith(' ')
-        && !cleanText.startsWith(' ');
-      textEl.textContent += (needsSpace ? ' ' : '') + cleanText;
-      transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
-      if (normalizedSpeaker === 'coach') {
-        rememberCoachLine(textEl.textContent);
-        showCoachToast(textEl.textContent);
-      } else if (normalizedSpeaker === 'user') {
-        rememberUserLine(textEl.textContent);
-      }
-      return;
+  let textEl;
+  if (sameLine) {
+    textEl = _activeLine.el.querySelector('.transcript-text');
+    if (!textEl) return;
+    if (raw) {
+      textEl.textContent = (textEl.textContent + chunk).replace(/\s+/g, ' ');
+    } else {
+      if (normalizedSpeaker === 'coach' && coachChunkAlreadyRendered(textEl.textContent, chunk)) return;
+      const needsSpace = textEl.textContent.length > 0 && !textEl.textContent.endsWith(' ');
+      textEl.textContent += (needsSpace ? ' ' : '') + chunk;
     }
+  } else {
+    // Different speaker (or first line) — start a new transcript entry
+    const line = document.createElement('div');
+    line.className = `transcript-line ${normalizedSpeaker}`;
+    line.innerHTML = `
+      <span class="transcript-meta">
+        <span class="transcript-speaker">${normalizedSpeaker === 'coach' ? 'Coach' : 'You'}</span>
+        <span class="transcript-time">${escapeHtml(_sessionElapsedLabel())}</span>
+      </span>
+      <span class="transcript-text"></span>
+    `;
+    textEl = line.querySelector('.transcript-text');
+    textEl.textContent = raw ? chunk.trimStart() : chunk;
+    transcriptFeed.appendChild(line);
+    _activeLine = { speaker: normalizedSpeaker, el: line };
   }
 
-  // Different speaker (or first line) — start a new transcript entry
-  const line = document.createElement('div');
-  line.className = `transcript-line ${normalizedSpeaker}`;
-  line.innerHTML = `
-    <span class="transcript-speaker">${normalizedSpeaker === 'coach' ? 'Coach' : 'You'}</span>
-    <span class="transcript-text">${escapeHtml(cleanText)}</span>
-  `;
-  transcriptFeed.appendChild(line);
   transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
-
-  _activeLine = { speaker: normalizedSpeaker, el: line };
-
+  const fullText = textEl.textContent.trim();
   if (normalizedSpeaker === 'coach') {
-    rememberCoachLine(cleanText);
-    showCoachToast(cleanText);
+    rememberCoachLine(fullText);
+    if (fullText) showCoachToast(fullText);
   } else if (normalizedSpeaker === 'user') {
-    rememberUserLine(cleanText);
+    rememberUserLine(fullText);
+    scheduleWordCountUpdate();
   }
 }
 
-/* ── ADK tool call visibility ────────────────────── */
-function showToolCallEvent(tool, args) {
-  const placeholder = transcriptFeed.querySelector('#welcome-panel');
-  if (placeholder) placeholder.remove();
+/* ── Coach suggestions (live) ────────────────────── */
+const ISSUE_LABELS = {
+  filler:         'Filler words',
+  pace:           'Pace',
+  eye_contact:    'Eye contact',
+  contradiction:  'Contradiction',
+  clarity:        'Clarity',
+  slide_clarity:  'Slide clarity',
+  slide_mismatch: 'Slide mismatch',
+  off_topic:      'Off topic',
+  rambling:       'Rambling',
+  monotone:       'Flat tone',
+  confidence:     'Hedging',
+  interruption:   'Interrupted',
+};
+const ISSUE_TIPS = {
+  filler:         'Replace the filler with a silent pause — breathe, then continue.',
+  pace:           'Slow down: finish each sentence, then pause for a beat.',
+  eye_contact:    'Look into the camera lens when you land a key point.',
+  contradiction:  'Pick one claim and restate it clearly — don’t walk it back.',
+  clarity:        'Say it again in one short sentence: point first, detail second.',
+  slide_clarity:  'Cut the slide to one idea and at most three short bullets.',
+  slide_mismatch: 'Talk about what’s on screen, or move to the matching slide.',
+  off_topic:      'Answer the exact question first, then add context.',
+  rambling:       'Make the point in two sentences, then stop and check in.',
+  monotone:       'Lift your energy: stress key words and vary your pitch.',
+  confidence:     'Replace “I think / maybe” with a direct statement.',
+  interruption:   'Let them finish their sentence, pause one beat, then answer.',
+};
 
-  // A tool call happens between turns — reset active line accumulator
-  _activeLine = { speaker: null, el: null };
+function evidenceSummary(ev) {
+  if (!ev || !ev.metric) return '';
+  const parts = [String(ev.metric).replace(/_/g, ' ')];
+  if (ev.measured != null && ev.measured !== '') {
+    parts.push(`measured ${ev.measured}${ev.metric === 'seconds_away' ? 's' : ''}`);
+  }
+  if (ev.threshold != null && ev.threshold !== 'n/a') parts.push(`threshold ${ev.threshold}`);
+  else if (ev.threshold_s != null) parts.push(`threshold ≥${ev.threshold_s}s`);
+  if (ev.session_total != null) parts.push(`session total ${ev.session_total}`);
+  return parts.join(' · ');
+}
+
+const SAID_LABELS = {
+  said:  'Coach said',
+  cue:   'Coach says',
+  quiet: 'Coach tip · noted quietly (cooldown)',
+};
+
+/** HTML for one coaching-moment card (shared by the live panel and the end-of-session review). */
+function suggestionCardHtml(item) {
+  const type = String(item.type || 'issue');
+  const label = ISSUE_LABELS[type] || type.replace(/_/g, ' ');
+  const tip = ISSUE_TIPS[type] || '';
+  const ev = evidenceSummary(item.evidence);
+  const sensorLabel = item.evidence?.sensor === 'browser_face_tracking' ? 'measured by face tracking'
+    : item.evidence?.sensor === 'audio_overlap' ? 'measured from audio'
+    : item.evidence?.sensor ? 'measured' : 'measured by face tracking';
+  const sensor = item.source === 'sensor' ? `<span class="sg-badge">${sensorLabel}</span>` : '';
+  const vote = item.userRating === 'up' ? '<span class="sg-vote">👍 you found this helpful</span>'
+    : item.userRating === 'down' ? '<span class="sg-vote">👎 you found this unhelpful</span>' : '';
+  const said = (item.said || '').trim();
+  return `
+    <div class="sg-head">
+      <span class="sg-time">${escapeHtml(formatTime(Number(item.ts) || 0))}</span>
+      <span class="sg-type type-${escapeHtml(type)}">${escapeHtml(label)}</span>
+      ${sensor}
+      ${vote}
+    </div>
+    ${item.description ? `<div class="sg-desc">${escapeHtml(item.description)}</div>` : ''}
+    <div class="sg-said ${said ? '' : 'hidden'}">
+      <span class="sg-label">${escapeHtml(SAID_LABELS[item.saidKind || 'said'])}</span>
+      <span class="sg-said-text">${escapeHtml(said ? `“${said}”` : '')}</span>
+    </div>
+    ${tip ? `<div class="sg-tip"><span class="sg-label">Try this</span>${escapeHtml(tip)}</div>` : ''}
+    ${ev ? `<div class="sg-evidence">${escapeHtml(ev)}</div>` : ''}`;
+}
+
+function resetSuggestions() {
+  _suggestionCards.clear();
+  _pendingCoachSaid.clear();
+  _suggestionCount = 0;
+  if (suggestionCountEl) suggestionCountEl.textContent = '0';
+  if (suggestionsFeed) suggestionsFeed.innerHTML = SUGGESTIONS_EMPTY_HTML;
+}
+
+function _prependToSuggestions(el) {
+  if (!suggestionsFeed) return;
+  suggestionsFeed.querySelector('.suggestions-empty')?.remove();
+  suggestionsFeed.prepend(el);   // newest first — always visible without scrolling
+  suggestionsFeed.scrollTop = 0;
+}
+
+function addSuggestionCard(msg) {
+  const index = Number(msg.index);
+  const card = document.createElement('div');
+  card.className = `suggestion-card type-${msg.issue_type || 'issue'}`;
+  const item = {
+    type: msg.issue_type,
+    ts: msg.ts,
+    description: msg.description,
+    evidence: msg.evidence,
+    source: msg.source,
+  };
+  const pending = _pendingCoachSaid.get(index);
+  if (pending) {
+    item.said = pending.text;
+    item.saidKind = pending.kind;
+    _pendingCoachSaid.delete(index);
+  }
+  card.innerHTML = suggestionCardHtml(item);
+  _suggestionCards.set(index, card);
+  _prependToSuggestions(card);
+  _suggestionCount += 1;
+  if (suggestionCountEl) suggestionCountEl.textContent = String(_suggestionCount);
+}
+
+/** kind: 'said' (actual coach speech) | 'cue' (cue requested) | 'quiet' (shown, not spoken). */
+function setSuggestionSaid(index, text, kind) {
+  const idx = Number(index);
+  const clean = String(text || '').trim();
+  if (!clean || !Number.isFinite(idx)) return;
+  const card = _suggestionCards.get(idx);
+  if (!card) {
+    const prev = _pendingCoachSaid.get(idx);
+    if (!(prev && prev.kind === 'said' && kind !== 'said')) _pendingCoachSaid.set(idx, { text: clean, kind });
+    return;
+  }
+  const box = card.querySelector('.sg-said');
+  if (!box) return;
+  // Real coach speech always wins over the requested cue.
+  if (kind !== 'said' && box.dataset.kind === 'said') return;
+  box.dataset.kind = kind;
+  box.classList.remove('hidden');
+  box.querySelector('.sg-label').textContent = SAID_LABELS[kind] || SAID_LABELS.said;
+  box.querySelector('.sg-said-text').textContent = `“${clean}”`;
+  if (kind === 'quiet') showCoachToast(clean);
+}
+
+/* ── ADK tool call visibility ────────────────────── */
+// Measurement/bookkeeping tools are already visible in the Agent Activity bar;
+// flag_issue becomes a full coaching card via the "coach_tip" event.
+const QUIET_TOOLS = new Set([
+  'flag_issue', 'get_speech_metrics', 'get_recent_transcript', 'check_eye_contact', 'draw_overlay',
+]);
+
+function showToolCallEvent(tool, args) {
+  if (QUIET_TOOLS.has(tool)) return;
 
   const line = document.createElement('div');
   line.className = 'transcript-line tool-call';
@@ -1308,8 +1567,7 @@ function showToolCallEvent(tool, args) {
       </span>`;
   }
 
-  transcriptFeed.appendChild(line);
-  transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+  _prependToSuggestions(line);
 }
 
 /* ── Architecture telemetry overlay ─────────────── */
@@ -1391,10 +1649,7 @@ function showSlideMarkEvent(msg) {
       <span class="tool-name">slide annotation</span>
       <span class="tool-arg">${escapeHtml(label + extra + slideNum)}</span>
     </span>`;
-  const placeholder = transcriptFeed.querySelector('#welcome-panel');
-  if (placeholder) placeholder.remove();
-  transcriptFeed.appendChild(line);
-  transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+  _prependToSuggestions(line);
 }
 
 function showDemoSeedEvent(msg) {
@@ -1406,10 +1661,7 @@ function showDemoSeedEvent(msg) {
       <span class="tool-name">checkpoint</span>
       <span class="tool-desc">${escapeHtml(msg.message || 'Demo checkpoint')}</span>
     </span>`;
-  const placeholder = transcriptFeed.querySelector('#welcome-panel');
-  if (placeholder) placeholder.remove();
-  transcriptFeed.appendChild(line);
-  transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+  _prependToSuggestions(line);
 }
 
 /* ── Live visual hint (Imagen in-session) ─────────── */
@@ -1417,9 +1669,6 @@ function showDemoSeedEvent(msg) {
 const _liveVisualPending = {};
 
 function handleLiveVisualHint(msg) {
-  const placeholder = transcriptFeed.querySelector('#welcome-panel');
-  if (placeholder) placeholder.remove();
-
   if (msg.status === 'generating') {
     const line = document.createElement('div');
     line.className = 'transcript-line tool-call live-visual-line';
@@ -1432,8 +1681,7 @@ function handleLiveVisualHint(msg) {
         <span class="tool-desc lv-spinner">Generating image…</span>
       </span>`;
     _liveVisualPending[msg.hint_type] = line;
-    transcriptFeed.appendChild(line);
-    transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+    _prependToSuggestions(line);
 
   } else if (msg.status === 'ready' && msg.data_base64) {
     // Replace spinner line with the actual image
@@ -1476,8 +1724,7 @@ function handleLiveVisualHint(msg) {
         ${rationaleHtml}
         ${imageContent}
       </span>`;
-    if (!pending) transcriptFeed.appendChild(container);
-    transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
+    if (!pending) _prependToSuggestions(container);
     delete _liveVisualPending[msg.hint_type];
   }
 }
@@ -1610,22 +1857,405 @@ function renderStarRow(stars) {
 }
 
 /* ── Scorecard ───────────────────────────────────── */
+/* ── Post-session transcript + coach review ─────── */
+// Server segments: { s: "u" | "c", t: text, ts: seconds from start }.
+// Coach "speech" that is really a leaked tool call (stored by sessions recorded
+// before the server-side filter existed).
+const TOOL_TEXT_RE = /tool_code|tool_call|default_api|\b(flag_issue|check_eye_contact|get_speech_metrics|draw_overlay|get_recent_transcript)\b/i;
+
+function _transcriptRows(data) {
+  return (data.transcript || [])
+    .filter((seg) => seg && seg.t && String(seg.t).trim())
+    .filter((seg) => !(seg.s === 'c' && TOOL_TEXT_RE.test(String(seg.t))))
+    .map((seg) => ({
+      speaker: seg.s === 'c' ? 'Coach' : seg.s === 'o' ? 'Them' : 'You',
+      text: String(seg.t).trim(),
+      ts: Number(seg.ts) || 0,
+    }));
+}
+
+function _coachMoments(data) {
+  return (data.coaching_events || []).map((e) => ({
+    type: e.type,
+    ts: Number(e.timestamp) || 0,
+    description: e.text || '',
+    evidence: e.evidence || {},
+    source: e.source || 'model',
+    said: e.coach_said || '',
+    saidKind: 'said',
+    userRating: e.user_rating || '',
+  }));
+}
+
+/** created_at is unix seconds from the server; tolerate milliseconds too. */
+function _sessionDate(data) {
+  const raw = Number(data.created_at);
+  if (!Number.isFinite(raw) || raw <= 0) return new Date();
+  return new Date(raw > 1e12 ? raw : raw * 1000);
+}
+
+function _userWordCount(rows) {
+  return rows.filter((r) => r.speaker === 'You')
+    .reduce((n, r) => n + r.text.split(/\s+/).filter(Boolean).length, 0);
+}
+
+function _reviewPlainText(data) {
+  const rows = _transcriptRows(data);
+  const moments = _coachMoments(data);
+  const mode = (data.coach_mode || 'general').replace(/_/g, ' ');
+  const context = (data.delivery_context || 'virtual').replace(/_/g, ' ');
+  const goal = (data.primary_goal || 'balanced').replace(/_/g, ' ');
+  const out = [
+    'PITCHMIRROR SESSION REVIEW',
+    `${_sessionDate(data).toLocaleString()} · ${mode} · ${context} · goal: ${goal}`,
+    `Score: ${Number(data.overall_score || 0).toFixed(1)}/100 · Duration: ${formatTime(Number(data.duration_seconds) || 0)} · ${_userWordCount(rows)} words spoken`,
+    '',
+    '== TRANSCRIPT ==',
+  ];
+  if (rows.length) rows.forEach((r) => out.push(`[${formatTime(r.ts)}] ${r.speaker}: ${r.text}`));
+  else out.push('(no speech was transcribed)');
+
+  out.push('', `== COACHING MOMENTS (${moments.length}) ==`);
+  if (!moments.length) out.push('(no coaching interruptions)');
+  moments.forEach((m) => {
+    out.push(`[${formatTime(m.ts)}] ${ISSUE_LABELS[m.type] || m.type}: ${m.description}`);
+    if (m.said) out.push(`    Coach said: "${m.said}"`);
+    if (ISSUE_TIPS[m.type]) out.push(`    Try this: ${ISSUE_TIPS[m.type]}`);
+    const ev = evidenceSummary(m.evidence);
+    if (ev) out.push(`    Evidence: ${ev}`);
+  });
+
+  const recap = data.recap || {};
+  if (recap.summary || (recap.action_items || []).length) {
+    // Recap goes right after the header lines, before the transcript.
+    const rc = ['', '== MEETING RECAP =='];
+    if (recap.summary) rc.push(recap.summary);
+    const sect = (title, items) => { if (items && items.length) { rc.push('', `${title}:`); items.forEach((x) => rc.push(`  - ${x}`)); } };
+    sect('Decisions', recap.decisions);
+    if ((recap.action_items || []).length) {
+      rc.push('', 'Action items:');
+      recap.action_items.forEach((a) => rc.push(`  - [${a.owner || '—'}] ${a.task}${a.due ? ` (due ${a.due})` : ''}`));
+    }
+    sect('Open questions', recap.open_questions);
+    sect('Client signals', recap.client_signals);
+    if (recap.follow_up_email?.body) {
+      rc.push('', '== FOLLOW-UP EMAIL ==', `Subject: ${recap.follow_up_email.subject || ''}`, '', recap.follow_up_email.body);
+    }
+    out.splice(3, 0, ...rc);
+  }
+  const points = data.brief?.points || [];
+  if (points.length) {
+    out.push('', `== PRE-CALL POINTS (${points.filter((p) => p.covered).length}/${points.length} covered) ==`);
+    points.forEach((p) => out.push(`  ${p.covered ? '[x]' : '[ ]'} ${p.text}`));
+  }
+
+  const qa = Array.isArray(data.qa_review) ? data.qa_review : [];
+  if (qa.length) {
+    out.push('', `== QUESTION-BY-QUESTION REVIEW (${qa.length}) ==`);
+    qa.forEach((q, i) => {
+      out.push(`Q${i + 1} [${formatTime(Number(q.ts) || 0)}]${Number.isFinite(q.rating) ? ` (${q.rating}/5)` : ''}: ${q.question}`);
+      out.push(`    Your answer: ${q.answer}`);
+      if (q.verdict) out.push(`    Verdict: ${q.verdict}`);
+      if (q.worked) out.push(`    What worked: ${q.worked}`);
+      if (q.improve) out.push(`    Fix this: ${q.improve}`);
+      if (q.better_answer) out.push(`    Stronger answer: ${q.better_answer}`);
+    });
+  }
+
+  const report = String(data.final_report || window._analysisReport || '').replace(/\*\*(.*?)\*\*/g, '$1').trim();
+  out.push('', '== AI COACHING REPORT ==', report || '(not available)');
+  return out.join('\n') + '\n';
+}
+
+function downloadSessionReview() {
+  const data = window._lastScorecardData;
+  if (!data) return;
+  const blob = new Blob([_reviewPlainText(data)], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = _sessionDate(data).toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  a.href = url;
+  a.download = `pitchmirror-session-${stamp}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// Back-compat for any old inline handlers.
+const downloadTranscript = downloadSessionReview;
+
+/** After-call recap: summary, decisions, action items, follow-up email, brief coverage. */
+function renderRecap(data) {
+  const r = data.recap || {};
+  const points = data.brief?.points || [];
+  const hasRecap = r.summary || (r.action_items || []).length || r.follow_up_email?.body;
+  const moods = (data.client_moods || []).filter((m, i, arr) => i === 0 || m.mood !== arr[i - 1].mood);
+  if (!hasRecap && !points.length && !moods.length) return '';
+  const moodHtml = moods.length
+    ? `<div class="rc-block"><div class="rc-title">Client mood during the call</div>
+        <div class="rc-moods">${moods.map((m) => `<span class="rc-mood mood-${escapeHtml(m.mood)}" title="${escapeHtml(m.reason || '')}">
+          <span class="sc-event-time">${formatTime(Number(m.ts) || 0)}</span> ${escapeHtml(m.mood)}</span>`).join('<span class="rc-arrow">→</span>')}</div></div>`
+    : '';
+  const list = (items) => items.map((x) => `<li>${escapeHtml(x)}</li>`).join('');
+  const block = (title, items) => (items && items.length
+    ? `<div class="rc-block"><div class="rc-title">${title}</div><ul>${list(items)}</ul></div>` : '');
+  const actions = (r.action_items || []).length
+    ? `<div class="rc-block"><div class="rc-title">Action items</div>
+        <table class="rc-actions"><thead><tr><th>Owner</th><th>Task</th><th>Due</th></tr></thead><tbody>
+        ${r.action_items.map((a) => `<tr><td>${escapeHtml(a.owner || '—')}</td><td>${escapeHtml(a.task)}</td><td>${escapeHtml(a.due || '—')}</td></tr>`).join('')}
+        </tbody></table></div>`
+    : '';
+  const done = points.filter((p) => p.covered).length;
+  const coverage = points.length
+    ? `<div class="rc-block"><div class="rc-title">Pre-call points covered <span class="report-badge">${done}/${points.length}</span></div>
+        <ul class="rc-points">${points.map((p) => `<li class="${p.covered ? 'done' : 'missed'}">${p.covered ? '✓' : '✗'} ${escapeHtml(p.text)}${p.covered && Number.isFinite(p.ts) ? ` <span class="sc-event-time">${formatTime(p.ts)}</span>` : ''}</li>`).join('')}</ul></div>`
+    : '';
+  const email = r.follow_up_email?.body
+    ? `<div class="rc-email">
+        <div class="rc-title">Follow-up email <span class="rc-email-actions">
+          <button type="button" class="asset-download" onclick="copyRecapEmail()">Copy</button>
+          <button type="button" class="asset-download" onclick="openRecapEmail()">Open in mail app</button>
+        </span></div>
+        <div class="rc-email-subject"><b>Subject:</b> ${escapeHtml(r.follow_up_email.subject || '')}</div>
+        <pre class="rc-email-body">${escapeHtml(r.follow_up_email.body)}</pre>
+        <span id="rc-email-status" class="rc-email-status" aria-live="polite"></span>
+      </div>`
+    : '';
+  return `
+    <div class="recap-section">
+      <div class="sc-events-title">Meeting recap</div>
+      ${r.summary ? `<p class="rc-summary">${escapeHtml(r.summary)}</p>` : ''}
+      <div class="rc-grid">
+        ${coverage}
+        ${moodHtml}
+        ${block('Decisions', r.decisions)}
+        ${actions}
+        ${block('Open questions', r.open_questions)}
+        ${block('Client signals', r.client_signals)}
+      </div>
+      ${email}
+    </div>`;
+}
+
+function _recapEmailText() {
+  const e = window._lastScorecardData?.recap?.follow_up_email || {};
+  return { subject: e.subject || '', body: e.body || '' };
+}
+
+async function copyRecapEmail() {
+  const { subject, body } = _recapEmailText();
+  const status = document.getElementById('rc-email-status');
+  try {
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+    if (status) status.textContent = 'Copied ✓';
+  } catch (_) {
+    if (status) status.textContent = 'Copy failed — select the text and copy it manually.';
+  }
+}
+
+function openRecapEmail() {
+  const { subject, body } = _recapEmailText();
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/** Pilot feedback form shown under every review. */
+function renderFeedbackForm(data) {
+  if (!data.session_id) return '';
+  const tester = window.PMTester?.current()?.name || '';
+  const stars = [1, 2, 3, 4, 5].map((n) => `
+    <button type="button" class="fb-star" data-value="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('');
+  return `
+    <form class="feedback-section" id="feedback-form" onsubmit="submitFeedback(event)">
+      <div class="sc-events-title">How useful was this? <span class="report-badge">pilot feedback${tester ? ` · ${escapeHtml(tester)}` : ''}</span></div>
+      <div class="fb-row">
+        <span class="fb-label">Rating</span>
+        <span class="fb-stars" role="radiogroup" aria-label="Rating">${stars}</span>
+      </div>
+      <label class="fb-row"><span class="fb-label">What helped most?</span>
+        <textarea name="helped" rows="2" maxlength="1000" placeholder="e.g. the answer outlines, the follow-up email"></textarea></label>
+      <label class="fb-row"><span class="fb-label">What was annoying or wrong?</span>
+        <textarea name="annoying" rows="2" maxlength="1000" placeholder="e.g. too many nudges, missed my words"></textarea></label>
+      <div class="fb-row"><span class="fb-label">Would you use it in real meetings?</span>
+        <span class="fb-choices">
+          <label><input type="radio" name="would_use" value="yes"> Yes</label>
+          <label><input type="radio" name="would_use" value="maybe"> Maybe</label>
+          <label><input type="radio" name="would_use" value="no"> No</label>
+        </span>
+      </div>
+      <div class="fb-actions">
+        <button type="submit" class="asset-download fb-submit">Send feedback</button>
+        <span id="fb-status" class="fb-status" aria-live="polite"></span>
+      </div>
+    </form>`;
+}
+
+function bindFeedbackForm() {
+  const form = document.getElementById('feedback-form');
+  if (!form) return;
+  form.querySelectorAll('.fb-star').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      form.dataset.rating = btn.dataset.value;
+      form.querySelectorAll('.fb-star').forEach((b) => b.classList.toggle('on', Number(b.dataset.value) <= Number(btn.dataset.value)));
+    });
+  });
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+  const form = event.target;
+  const status = document.getElementById('fb-status');
+  const rating = Number(form.dataset.rating || 0);
+  if (!rating) { status.textContent = 'Pick a star rating first.'; return; }
+  const payload = {
+    session_id: window._lastScorecardData?.session_id,
+    rating,
+    helped: form.helped.value,
+    annoying: form.annoying.value,
+    would_use: form.querySelector('input[name="would_use"]:checked')?.value || '',
+    tester: window.PMTester?.current()?.name || '',
+  };
+  status.textContent = 'Sending…';
+  try {
+    const resp = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    status.textContent = 'Thanks — feedback saved ✓';
+    form.querySelector('.fb-submit').textContent = 'Update feedback';
+  } catch (err) {
+    console.error('feedback failed', err);
+    status.textContent = 'Could not save feedback — try again.';
+  }
+}
+
+/** Question-by-question review of a meeting: each question asked, the answer, a rating and a stronger answer. */
+function renderQaReview(data) {
+  const items = Array.isArray(data.qa_review) ? data.qa_review : [];
+  if (!items.length) {
+    if (data.session_kind !== 'meeting') return '';
+    return `
+      <div class="qa-section">
+        <div class="sc-events-title">Question-by-question review</div>
+        <div class="recent-empty">No questions from the other person were captured. Use “Choose meeting audio”
+        before starting so the coach can hear their questions.</div>
+      </div>`;
+  }
+  const cards = items.map((q, i) => {
+    const stars = Number.isFinite(q.rating) ? renderStarRow(q.rating) : '';
+    const hint = (q.hint_points || []).length
+      ? `<div class="qa-row"><span class="qa-label">Live outline shown</span><ol class="qa-hint">${q.hint_points.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ol></div>`
+      : '';
+    return `
+      <div class="qa-card">
+        <div class="qa-head">
+          <span class="qa-num">Q${i + 1}</span>
+          <span class="sc-event-time">${formatTime(Number(q.ts) || 0)}</span>
+          ${stars ? `<span class="qa-stars">${stars}<span class="qa-rating">${q.rating}/5</span></span>` : ''}
+        </div>
+        <div class="qa-question">“${escapeHtml(q.question)}”</div>
+        <div class="qa-row"><span class="qa-label">Your answer</span><span class="qa-answer">${escapeHtml(q.answer)}</span></div>
+        ${q.verdict ? `<div class="qa-row"><span class="qa-label">Verdict</span><span>${escapeHtml(q.verdict)}</span></div>` : ''}
+        ${q.worked ? `<div class="qa-row"><span class="qa-label">What worked</span><span>${escapeHtml(q.worked)}</span></div>` : ''}
+        ${q.improve ? `<div class="qa-row"><span class="qa-label">Fix this</span><span>${escapeHtml(q.improve)}</span></div>` : ''}
+        ${hint}
+        ${q.better_answer ? `<div class="qa-better"><span class="qa-label">Stronger answer</span><p>${escapeHtml(q.better_answer)}</p></div>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div class="qa-section">
+      <div class="sc-events-title">Question-by-question review <span class="report-badge">${items.length} question${items.length === 1 ? '' : 's'}</span></div>
+      <div class="qa-list">${cards}</div>
+    </div>`;
+}
+
+/** Scroll the review transcript to coaching moment `i` and flash it. */
+function jumpToMoment(i) {
+  const marker = document.getElementById(`rv-marker-${i}`);
+  const col = document.getElementById('rv-transcript-body');
+  if (!marker || !col) return;
+  col.scrollTo({ top: marker.offsetTop - col.offsetTop - 24, behavior: 'smooth' });
+  marker.classList.remove('flash');
+  void marker.offsetWidth;
+  marker.classList.add('flash');
+}
+
+/** Transcript (left) and coach review (right), side by side. */
+function renderReviewSection(data, reportBodyHtml, modeLabel) {
+  const rows = _transcriptRows(data);
+  const moments = _coachMoments(data);
+  const words = _userWordCount(rows);
+
+  // Interleave coaching-moment markers into the transcript by timestamp.
+  const items = rows.map((r) => ({ kind: 'line', ts: r.ts, r }))
+    .concat(moments.map((m, i) => ({ kind: 'moment', ts: m.ts, m, i })))
+    .sort((x, y) => (x.ts - y.ts) || (x.kind === 'line' ? -1 : 1));
+  const transcriptHtml = rows.length || moments.length
+    ? items.map((it) => (it.kind === 'line'
+      ? `<div class="sc-transcript-line ${it.r.speaker === 'Coach' ? 'is-coach' : it.r.speaker === 'Them' ? 'is-them' : 'is-user'}">
+           <span class="sc-event-time">${formatTime(it.r.ts)}</span>
+           <span class="sc-transcript-speaker">${it.r.speaker}</span>
+           <span class="sc-transcript-text">${escapeHtml(it.r.text)}</span>
+         </div>`
+      : `<div id="rv-marker-${it.i}" class="rv-marker type-${escapeHtml(it.m.type)}">
+           <span class="sc-event-time">${formatTime(it.m.ts)}</span>
+           <span>⚑ ${escapeHtml(ISSUE_LABELS[it.m.type] || it.m.type)}${it.m.said ? ` — coach: “${escapeHtml(it.m.said)}”` : ''}</span>
+         </div>`)).join('')
+    : '<div class="recent-empty">No speech was transcribed in this session.</div>';
+
+  const momentsHtml = moments.length
+    ? moments.map((m, i) => `
+        <div role="button" tabindex="0" class="suggestion-card review-card type-${escapeHtml(m.type)}"
+             onclick="jumpToMoment(${i})" onkeydown="if (event.key === 'Enter') jumpToMoment(${i})"
+             title="Show this moment in the transcript">
+          ${suggestionCardHtml(m)}
+        </div>`).join('')
+    : '<div class="recent-empty">No coaching interruptions this session.</div>';
+
+  return `
+    <div class="review-split">
+      <div class="review-col">
+        <div class="sc-events-title">
+          Transcript <span class="report-badge">${words} words</span>
+          <button type="button" class="asset-download review-download" onclick="downloadSessionReview()">Download .txt</button>
+        </div>
+        <div id="rv-transcript-body" class="sc-transcript-body review-body">${transcriptHtml}</div>
+      </div>
+      <div class="review-col">
+        <div class="sc-events-title">Coach Review <span class="report-badge">${moments.length} moments</span></div>
+        <div class="review-body review-coach">
+          <div class="rv-subhead">Coaching moments</div>
+          <div class="review-moments">${momentsHtml}</div>
+          <div class="rv-subhead">AI coaching report <span class="report-badge">${escapeHtml(modeLabel)} mode</span></div>
+          <div class="report-body">${reportBodyHtml}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderScorecard(data) {
+  window._lastScorecardData = data;
   const score = data.overall_score || 0;
   const gradeClass = score >= 80 ? 'excellent' : score >= 65 ? 'good' : score >= 45 ? 'needs-work' : 'poor';
   const gradeLabel = score >= 80 ? 'Excellent' : score >= 65 ? 'Good' : score >= 45 ? 'Needs Work' : 'Poor';
   const modeLabel = (data.coach_mode || 'general').replace('_', ' ');
-  const contextLabel = (data.delivery_context || 'virtual').replace('_', ' ');
+  const contextLabel = data.session_kind === 'meeting'
+    ? `live meeting${data.platform ? ` on ${PLATFORM_LABELS[data.platform] || data.platform}` : ''}`
+    : (data.delivery_context || 'virtual').replace('_', ' ');
   const goalLabel = (data.primary_goal || 'balanced').replace('_', ' ');
 
   const overallStars = scoreToStars(score);
+  const insufficientHtml = data.insufficient_speech
+    ? `<div class="insufficient-banner">Not enough of your speech was captured to score this session
+        (${Number(data.user_words || 0)} words). Check the microphone and language, and speak for at least 30 seconds.</div>`
+    : '';
   const scoreMeta = data.scoring || null;
   const scoreMetaHtml = (scoreMeta && Number.isFinite(scoreMeta.base_score))
     ? `<div class="scorecard-grade-breakdown">Base ${scoreMeta.base_score}/100 · Penalty -${Number(scoreMeta.event_penalty || 0).toFixed(1)}</div>`
     : '';
 
   const categories = data.categories || {};
-  const events = data.coaching_events || [];
   const timelineHtml = renderReplayTimeline(data);
 
   // SVG score ring (arc reflects internal 0-100 percentage)
@@ -1670,26 +2300,6 @@ function renderScorecard(data) {
     `;
   }).join('');
 
-  const eventsHtml = events.length === 0
-    ? '<div style="color:var(--text-muted); font-size:12px; padding: 8px 0;">No coaching interruptions — great session!</div>'
-    : events.map(e => {
-        const ev = e.evidence || {};
-        let evidenceChip = '';
-        if (ev.metric && ev.threshold != null) {
-          const parts = [ev.metric, ev.threshold];
-          if (ev.measured != null) parts.push(`measured: ${ev.measured}`);
-          if (ev.session_total != null) parts.push(`session total: ${ev.session_total}`);
-          if (ev.threshold_s    != null) parts.push(`≥${ev.threshold_s}s`);
-          evidenceChip = `<span class="sc-event-evidence">${parts.map(escapeHtml).join(' · ')}</span>`;
-        }
-        return `
-        <div class="sc-event">
-          <span class="sc-event-time">${formatTime(e.timestamp)}</span>
-          <span class="sc-event-text">${escapeHtml(e.text)}</span>
-          ${evidenceChip}
-        </div>`;
-      }).join('');
-
   const durationMin = Math.floor((data.duration_seconds || 0) / 60);
   const durationSec = Math.round((data.duration_seconds || 0) % 60);
 
@@ -1703,12 +2313,7 @@ function renderScorecard(data) {
   const reportBody = report
     ? escapeHtml(report).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     : '<span style="color:var(--text-muted);font-style:italic">AI analysis is pending or unavailable for this session.</span>';
-  const reportHtml = `<div class="scorecard-report">
-      <div class="sc-events-title">AI Coaching Report <span class="report-badge">${escapeHtml(modeLabel)} mode</span> <span class="report-badge">gemini · multi-agent</span></div>
-      <div class="report-body">${reportBody}</div>
-    </div>
-    ${assetsHtml}
-    ${citationHtml}`;
+  const reviewHtml = renderReviewSection(data, reportBody, modeLabel);
 
   scorecardContent.innerHTML = `
     <div class="scorecard-overall">
@@ -1728,13 +2333,15 @@ function renderScorecard(data) {
       <div class="scorecard-grade-label">${gradeLabel} &middot; ${overallStars.toFixed(1)}&thinsp;/&thinsp;5 &middot; ${score.toFixed(1)}/100 &middot; ${durationMin}:${String(durationSec).padStart(2,'0')} session &middot; ${escapeHtml(modeLabel)} &middot; ${escapeHtml(contextLabel)} &middot; goal: ${escapeHtml(goalLabel)}</div>
       ${scoreMetaHtml}
     </div>
+    ${insufficientHtml}
+    ${renderRecap(data)}
     <div class="scorecard-categories">${catHtml}</div>
+    ${reviewHtml}
+    ${renderQaReview(data)}
     ${timelineHtml}
-    <div class="scorecard-events">
-      <div class="sc-events-title">Agent Coaching Events (${events.length})</div>
-      ${eventsHtml}
-    </div>
-    ${reportHtml}
+    ${assetsHtml}
+    ${citationHtml}
+    ${renderFeedbackForm(data)}
     <div class="recent-section">
       <div class="sc-events-title">Recent Sessions</div>
       <div id="recent-sessions" class="recent-sessions">
@@ -1765,6 +2372,7 @@ function renderScorecard(data) {
   });
 
   bindReplayTimeline();
+  bindFeedbackForm();
 }
 
 function renderReplayTimeline(data) {
@@ -1869,8 +2477,12 @@ async function loadRecentSessions() {
       const dur = Number.isFinite(s.duration_seconds) ? `${Math.round(s.duration_seconds)}s` : '0s';
       const mode = (s.coach_mode || 'general').replace('_', ' ');
       const context = (s.delivery_context || 'virtual').replace('_', ' ');
+      const sid = String(s.session_id || '');
       return `
-        <div class="recent-row">
+        <div class="recent-row is-clickable" role="button" tabindex="0"
+             onclick="openPastSession('${escapeHtml(sid)}')"
+             onkeydown="if (event.key === 'Enter') openPastSession('${escapeHtml(sid)}')"
+             title="Open this session's transcript and review">
           <span class="recent-score">${score}</span>
           <span class="recent-meta">${escapeHtml(when)} · ${escapeHtml(dur)} · ${escapeHtml(mode)} · ${escapeHtml(context)}</span>
           <span class="recent-id">${escapeHtml(String(s.session_id || '').slice(0, 8))}</span>
@@ -1884,6 +2496,107 @@ async function loadRecentSessions() {
 }
 
 /* ── Helpers ─────────────────────────────────────── */
+/* ── Past sessions (history) ─────────────────────── */
+const PLATFORM_LABELS = {
+  zoom: 'Zoom', google_meet: 'Google Meet', teams: 'Microsoft Teams', webex: 'Webex', other: 'Other platform',
+};
+let _historyReturnTo = 'live';
+
+function _setRightView(view) {
+  // view: 'live' | 'history' | 'scorecard'
+  const rightPanel = document.querySelector('.right-panel');
+  liveBoard?.classList.toggle('hidden', view !== 'live');
+  historyPanel?.classList.toggle('hidden', view !== 'history');
+  scorecardPanel.classList.toggle('hidden', view !== 'scorecard');
+  document.getElementById('analysis-panel')?.classList.add('hidden');
+  rightPanel?.classList.toggle('results-mode', view !== 'live');
+  if (rightPanel) rightPanel.scrollTop = 0;
+}
+
+async function showHistory() {
+  if (sessionActive || _waitingForScorecard) return;
+  _historyReturnTo = scorecardPanel.classList.contains('hidden') ? 'live' : 'scorecard';
+  _setRightView('history');
+  if (!historyList) return;
+  historyList.innerHTML = '<div class="recent-empty">Loading past sessions…</div>';
+  try {
+    const resp = await fetch('/api/sessions?limit=50', { headers: authHeaders() });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const sessions = ((await resp.json()).sessions || []).filter(Boolean);
+    if (!sessions.length) {
+      historyList.innerHTML = '<div class="recent-empty">No saved sessions yet. Finish a session and it will appear here.</div>';
+      return;
+    }
+    historyList.innerHTML = sessions.map((s) => {
+      const sid = escapeHtml(String(s.session_id || ''));
+      const score = Number.isFinite(s.overall_score) && !s.insufficient_speech ? Number(s.overall_score).toFixed(1) : '–';
+      const when = _sessionDate(s).toLocaleString();
+      const mode = escapeHtml((s.coach_mode || 'general').replace(/_/g, ' '));
+      const context = s.session_kind === 'meeting'
+        ? `live meeting${s.platform ? ` · ${escapeHtml(PLATFORM_LABELS[s.platform] || s.platform)}` : ''}`
+        : escapeHtml((s.delivery_context || 'virtual').replace(/_/g, ' '));
+      const kindBadge = s.session_kind === 'meeting'
+        ? '<span class="history-kind is-meeting">Meeting</span>'
+        : '<span class="history-kind">Practice</span>';
+      const extra = [
+        formatTime(Number(s.duration_seconds) || 0),
+        s.words != null ? `${s.words} words` : '',
+        s.coaching_moments != null ? `${s.coaching_moments} coaching moments` : '',
+      ].filter(Boolean).join(' · ');
+      return `
+        <div class="history-row" role="button" tabindex="0"
+             onclick="openPastSession('${sid}')" onkeydown="if (event.key === 'Enter') openPastSession('${sid}')">
+          <span class="history-score">${score}</span>
+          <span class="history-meta">
+            <span class="history-when">${escapeHtml(when)} ${kindBadge}</span>
+            <span class="history-sub">${mode} · ${context} · ${escapeHtml(extra)}</span>
+          </span>
+          <span class="history-open">View transcript &amp; review →</span>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('history fetch failed', err);
+    historyList.innerHTML = '<div class="recent-empty">Could not load past sessions.</div>';
+  }
+}
+
+function closeHistory() {
+  _setRightView(_historyReturnTo === 'scorecard' && window._lastScorecardData ? 'scorecard' : 'live');
+}
+
+async function openPastSession(sessionId) {
+  if (!sessionId || sessionActive) return;
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { headers: authHeaders() });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    // Saved sessions carry their own report; don't fall back to the last live one.
+    window._analysisReport = null;
+    window._researchTips = null;
+    window._generatedAssets = null;
+    _setRightView('scorecard');
+    renderScorecard(data);
+    loadRecentSessions();
+  } catch (err) {
+    console.error('open session failed', err);
+    if (historyList && !historyPanel.classList.contains('hidden')) {
+      historyList.insertAdjacentHTML('afterbegin', '<div class="recent-empty">Could not open that session.</div>');
+    }
+  }
+}
+
+document.getElementById('btn-history')?.addEventListener('click', showHistory);
+
+// Deep links from Meeting Mode: /app?session=<id> opens a saved review, /app?view=history the list.
+(() => {
+  const params = new URLSearchParams(location.search);
+  const sid = params.get('session');
+  if (sid) openPastSession(sid);
+  else if (params.get('view') === 'history') showHistory();
+})();
+document.getElementById('btn-history-welcome')?.addEventListener('click', showHistory);
+document.getElementById('btn-history-close')?.addEventListener('click', closeHistory);
+
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

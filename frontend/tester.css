@@ -1,0 +1,27 @@
+/* "Who's testing?" picker — shared by the practice app and Meeting Mode */
+.tester-picker { position: relative; font-family: inherit; }
+.tester-btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: #374151;
+  background: #fff; border: 1px solid #d1d5db; border-radius: 20px; padding: 3px 10px 3px 3px;
+}
+.tester-btn:hover, .tester-btn:focus-visible { border-color: #7c3aed; outline: none; }
+.tester-dot {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: #ede9fe; color: #6d28d9; font-size: 11px; font-weight: 800;
+}
+.tester-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tester-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 1000; min-width: 210px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+.tester-menu[hidden] { display: none; }
+.tester-menu-title { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #8892a8; padding: 6px 8px; }
+.tester-menu hr { border: none; border-top: 1px solid #e5e7eb; margin: 6px 0; }
+.tester-item {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; color: #0d1117;
+  background: none; border: none; border-radius: 8px; padding: 7px 8px; cursor: pointer; text-decoration: none;
+}
+.tester-item:hover, .tester-item:focus-visible { background: #f3f4f6; outline: none; }
+.tester-item.is-current { font-weight: 700; color: #6d28d9; }

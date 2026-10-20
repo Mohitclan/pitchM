@@ -5,9 +5,20 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      # Sessions + user profiles are stored in SQLite on the named volume below.
+      LOCAL_DB_PATH: /app/data/pitchmirror.db
+    volumes:
+      - pitchmirror_data:/app/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+# Named volume: survives `docker compose down` and image rebuilds.
+# Only `docker compose down -v` (or `docker volume rm`) deletes the data.
+volumes:
+  pitchmirror_data:

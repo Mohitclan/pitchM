@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PitchMirror — Pilot Feedback</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/meeting.css?v=20261020i" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261020i" />
+  <style>
+    .pl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 18px 0; }
+    .pl-stat { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: #fff; }
+    .pl-num { font-family: var(--font-d); font-size: 32px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+    .pl-cap { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .pl-section { margin-top: 22px; }
+    .pl-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 10px; }
+    .pl-bars { display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
+    .pl-bar { display: grid; grid-template-columns: 54px minmax(0, 1fr) 34px; gap: 10px; align-items: center; font-size: 13px; }
+    .pl-track { height: 12px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+    .pl-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #1d4ed8); border-radius: 6px; }
+    .pl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pl-table th { text-align: left; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .pl-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); line-height: 1.5; }
+    .pl-empty { color: var(--muted); font-size: 14px; padding: 24px 0; }
+    .pl-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pl-wrap { overflow-x: auto; }
+    @media print { .mt-header, .pl-actions { display: none; } .mt-card { box-shadow: none; border: none; } }
+  </style>
+</head>
+<body class="mt-page">
+  <header class="mt-header">
+    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> PitchMirror</a>
+    <span class="mt-header-tag">Pilot feedback</span>
+    <nav class="mt-header-links">
+      <a href="/app">Practice app</a>
+      <a href="/meeting">Meeting Mode</a>
+      <a href="/guide">How to try it</a>
+      <span id="tester-slot"></span>
+    </nav>
+  </header>
+
+  <main class="mt-main">
+    <section class="mt-card">
+      <h1 class="mt-title">Pilot feedback</h1>
+      <p class="mt-sub">What testers said after their sessions on this device. Use it as evidence when you ask for approval.</p>
+      <div class="pl-actions">
+        <button type="button" class="mt-btn mt-btn-ghost" id="pl-refresh">Refresh</button>
+        <button type="button" class="mt-btn mt-btn-ghost" id="pl-csv">Download CSV</button>
+        <button type="button" class="mt-btn mt-btn-ghost" onclick="window.print()">Print / save as PDF</button>
+      </div>
+      <div id="pl-body"><div class="pl-empty">Loading…</div></div>
+    </section>
+  </main>
+
+  <script src="/static/tester.js?v=20261020i"></script>
+  <script>
+  (function () {
+    'use strict';
+    const body = document.getElementById('pl-body');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let last = null;
+
+    function bars(hist) {
+      const max = Math.max(1, ...Object.values(hist));
+      return [5, 4, 3, 2, 1].map((n) => `
+        <div class="pl-bar"><span>${'★'.repeat(n)}</span>
+          <span class="pl-track"><span class="pl-fill" style="width:${(100 * (hist[n] || 0) / max).toFixed(0)}%"></span></span>
+          <span>${hist[n] || 0}</span></div>`).join('');
+    }
+
+    function render(d) {
+      last = d;
+      if (!d.count) {
+        body.innerHTML = '<div class="pl-empty">No feedback yet. After a session, testers fill in “How useful was this?” at the bottom of the review.</div>';
+        return;
+      }
+      const kinds = Object.entries(d.by_kind || {}).map(([k, v]) =>
+        `${k === 'meeting' ? 'Real meetings' : 'Practice'}: ${v.count} (avg ${v.avg_rating}★)`).join(' · ');
+      body.innerHTML = `
+        <div class="pl-stats">
+          <div class="pl-stat"><div class="pl-num">${d.count}</div><div class="pl-cap">sessions with feedback</div></div>
+          <div class="pl-stat"><div class="pl-num">${d.avg_rating ?? '–'}<span style="font-size:16px">/5</span></div><div class="pl-cap">average rating</div></div>
+          <div class="pl-stat"><div class="pl-num">${d.would_use_yes_pct ?? '–'}%</div><div class="pl-cap">would use it in real meetings (${d.would_use.maybe} maybe, ${d.would_use.no} no)</div></div>
+          <div class="pl-stat"><div class="pl-num">${d.testers.length}</div><div class="pl-cap">testers: ${esc(d.testers.join(', '))}</div></div>
+        </div>
+        ${kinds ? `<p class="mt-note">${esc(kinds)}</p>` : ''}
+        <div class="pl-section"><div class="pl-h">Ratings</div><div class="pl-bars">${bars(d.rating_histogram)}</div></div>
+        ${Object.keys(d.nudge_ratings || {}).length ? `<div class="pl-section"><div class="pl-h">Live tips — 👍 / 👎 from testers</div>
+          <div class="pl-wrap"><table class="pl-table"><thead><tr><th>Tip type</th><th>👍 helpful</th><th>👎 not helpful</th></tr></thead>
+          <tbody>${Object.entries(d.nudge_ratings).sort((a, b) => (b[1].up + b[1].down) - (a[1].up + a[1].down)).map(([k, v]) =>
+            `<tr><td>${esc(k.replace(/_/g, ' '))}</td><td>${v.up}</td><td>${v.down}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+        <div class="pl-section"><div class="pl-h">What testers said</div>
+          ${d.comments.length ? `<div class="pl-wrap"><table class="pl-table">
+            <thead><tr><th>Tester</th><th>Rating</th><th>Would use</th><th>What helped</th><th>What was annoying</th><th>When</th></tr></thead>
+            <tbody>${d.comments.map((c) => `<tr>
+              <td>${esc(c.tester)}</td><td>${'★'.repeat(c.rating || 0)}</td><td>${esc(c.would_use || '–')}</td>
+              <td>${esc(c.helped || '')}</td><td>${esc(c.annoying || '')}</td>
+              <td>${c.created_at ? esc(new Date(c.created_at * 1000).toLocaleDateString()) : ''}</td></tr>`).join('')}
+            </tbody></table></div>` : '<div class="pl-empty">No written comments yet.</div>'}
+        </div>`;
+    }
+
+    async function load() {
+      body.innerHTML = '<div class="pl-empty">Loading…</div>';
+      try {
+        const resp = await fetch('/api/feedback/summary');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        render(await resp.json());
+      } catch (err) {
+        body.innerHTML = `<div class="pl-empty">Could not load feedback (${esc(err.message)}).</div>`;
+      }
+    }
+
+    function csv() {
+      if (!last || !last.comments) return;
+      const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const rows = [['tester', 'rating', 'would_use', 'helped', 'annoying', 'session_kind', 'date']]
+        .concat(last.comments.map((c) => [c.tester, c.rating, c.would_use, c.helped, c.annoying, c.session_kind,
+          c.created_at ? new Date(c.created_at * 1000).toISOString().slice(0, 10) : '']));
+      const blob = new Blob([rows.map((r) => r.map(q).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `pitchmirror-pilot-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    document.getElementById('pl-refresh').addEventListener('click', load);
+    document.getElementById('pl-csv').addEventListener('click', csv);
+    load();
+  })();
+  </script>
+</body>
+</html>

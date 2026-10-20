@@ -12,6 +12,10 @@ ANALYSIS_MODEL = os.getenv(
     "PITCHMIRROR_ANALYSIS_MODEL",
     "gemini-2.5-flash",
 )
+# Optional per-agent overrides so the post-session pipeline can spread requests
+# across separate per-model rate limits (useful on the free tier).
+RESEARCH_MODEL = os.getenv("PITCHMIRROR_RESEARCH_MODEL", ANALYSIS_MODEL)
+SUMMARY_MODEL = os.getenv("PITCHMIRROR_SUMMARY_MODEL", ANALYSIS_MODEL)
 
 VALID_COACH_MODES = (
     "general",
@@ -121,6 +125,7 @@ def build_system_prompt(
     screen_enabled: bool = False,
     demo_mode: bool = False,
     previous_summary: str = "",
+    meeting: bool = False,
 ) -> str:
     mode = normalize_coach_mode(coach_mode)
     context = normalize_delivery_context(delivery_context)
@@ -278,7 +283,23 @@ In demo mode, speak corrections crisply so observers can clearly hear each inter
 Trigger generate_live_visual_hint on the FIRST confirmed slide issue so judges see the image generation feature.
 """
 
+    meeting_block = """━━━ LIVE MEETING MODE (ENABLED) ━━━
+The presenter is in a REAL meeting right now (interview, pitch or call on Zoom / Google Meet / Teams).
+Other people are in the call. Your words are NEVER heard by them: they are shown to the presenter
+as a silent text nudge in a small floating bubble.
+- The microphone may also pick up other participants. Only coach the presenter's own delivery.
+- Never answer questions, never talk to other participants, never summarise the meeting.
+- The audio you hear may be ONLY the other participant (the presenter's words arrive as text in
+  [coach check] messages). Never reply to the other participant.
+- When a message starts with [coach check], answer with exactly one short line and nothing else:
+  NONE — or — CATEGORY: nudge (at most 7 words), where CATEGORY is one of OFF_TOPIC, RAMBLING,
+  UNCLEAR, MONOTONE, HEDGING, CONTRADICTION. Example: "OFF_TOPIC: Answer their pricing question."
+- Otherwise stay silent. Prefer NONE unless the issue is clear.
+"""
+
     chunks = [base]
+    if meeting:
+        chunks.append(meeting_block)
     if screen_enabled:
         chunks.append(screen_block)
     if demo_mode:

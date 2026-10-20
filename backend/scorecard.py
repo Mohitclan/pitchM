@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
 # Minimum meaningful session length; anything shorter gets a null scorecard.
 _MIN_SESSION_SEC = 5.0
+# Fewer presenter words than this can't be scored honestly (e.g. transcription failed).
+MIN_SCORABLE_WORDS = 25
 
 # Goal → category weights (must sum to 1.0).
 # When a user selects a focus goal, the overall score emphasises that dimension
@@ -43,11 +45,15 @@ def build_scorecard(state: "SessionState") -> dict:
 
     # Guard: degenerate sessions (immediate disconnect / no audio) must not
     # score 100 just because all counters happen to be zero.
-    if duration_sec < _MIN_SESSION_SEC or (not state.transcript and not state.events):
+    user_words = sum(len(seg.get("t", "").split()) for seg in state.transcript if seg.get("s") == "u")
+    insufficient = user_words < MIN_SCORABLE_WORDS
+    if duration_sec < _MIN_SESSION_SEC or insufficient:
         return {
             "session_id": state.session_id,
             "user_id": state.user_id,
             "coach_mode": state.coach_mode,
+            "session_kind": getattr(state, "session_kind", "practice"),
+            "platform": getattr(state, "platform", ""),
             "delivery_context": state.delivery_context,
             "primary_goal": state.primary_goal,
             "screen_enabled": state.screen_enabled,
@@ -57,11 +63,26 @@ def build_scorecard(state: "SessionState") -> dict:
             "created_at": created_at,
             "duration_seconds": round(duration_sec, 1),
             "overall_score": 0,
+            "insufficient_speech": True,
+            "user_words": user_words,
             "categories": {},
-            "coaching_events": [],
+            "coaching_events": [
+                {
+                    "timestamp": round(e.timestamp, 1),
+                    "type": e.event_type,
+                    "text": e.description,
+                    "evidence": e.evidence,
+                    "coach_said": (getattr(e, "coach_said", "") or "").strip(),
+                    "source": getattr(e, "source", "model"),
+                }
+                for e in state.events
+            ],
             "timeline_events": state.timeline_events,
             "transcript": state.transcript,
-            "final_report": state.final_report or "(Session too short to evaluate.)",
+            "final_report": state.final_report or (
+                f"Not enough of your speech was captured to score this session ({user_words} words). "
+                "Check that the right microphone is selected and speak for at least 30 seconds."
+            ),
             "research_tips": state.research_tips,
             "generated_assets": state.generated_assets,
             "prosody": state.prosody_metrics,
@@ -70,8 +91,13 @@ def build_scorecard(state: "SessionState") -> dict:
     # Use holistic AI scores from the synthesis agent when available;
     # fall back to metric-based scoring for any dimension not covered.
     ai = getattr(state, "ai_scores", {})
-    filler_score = ai["filler"] if "filler" in ai else _score_filler(state.filler_count, duration_min)
-    eye_score    = ai["eye"]    if "eye"    in ai else _score_eye(state.eye_contact_drops, duration_min)
+    # Filler and eye contact are measured directly (transcript / gaze checks), so the
+    # AI score may lower them but never hide what was measured. The report agents
+    # only see the transcript, not video, so they can't judge eye contact alone.
+    filler_measured = _score_filler(_filler_count(state), duration_min)
+    eye_measured    = _score_eye(_eye_drops(state), duration_min)
+    filler_score = min(ai["filler"], filler_measured) if "filler" in ai else filler_measured
+    eye_score    = min(ai["eye"], eye_measured)       if "eye"    in ai else eye_measured
     pace_score   = ai["pace"]   if "pace"   in ai else _score_pace(state.pace_violations, duration_min)
     clarity_score = ai["clarity"] if "clarity" in ai else _score_clarity(state.contradictions, state.clarity_flags, duration_min)
     visual_score  = ai["visual"]  if "visual"  in ai else _score_visual(state.visual_flags, state.mismatch_flags, duration_min)
@@ -95,6 +121,8 @@ def build_scorecard(state: "SessionState") -> dict:
         "session_id": state.session_id,
         "user_id": state.user_id,
         "coach_mode": state.coach_mode,
+        "session_kind": getattr(state, "session_kind", "practice"),
+        "platform": getattr(state, "platform", ""),
         "delivery_context": state.delivery_context,
         "primary_goal": state.primary_goal,
         "screen_enabled": state.screen_enabled,
@@ -113,12 +141,12 @@ def build_scorecard(state: "SessionState") -> dict:
         "categories": {
             "filler_words": {
                 "score": filler_score,
-                "count": state.filler_count,
+                "count": _filler_count(state),
                 "label": _grade(filler_score),
             },
             "eye_contact": {
                 "score": eye_score,
-                "drops": state.eye_contact_drops,
+                "drops": _eye_drops(state),
                 "label": _grade(eye_score),
             },
             "pace": {
@@ -153,6 +181,9 @@ def build_scorecard(state: "SessionState") -> dict:
                 "type": e.event_type,
                 "text": e.description,
                 "evidence": e.evidence,
+                "coach_said": (getattr(e, "coach_said", "") or "").strip(),
+                "source": getattr(e, "source", "model"),
+                "user_rating": getattr(e, "user_rating", ""),
             }
             for e in state.events
         ],
@@ -162,7 +193,29 @@ def build_scorecard(state: "SessionState") -> dict:
         "research_tips": state.research_tips,
         "generated_assets": state.generated_assets,
         "prosody": state.prosody_metrics,
+        "answer_hints": getattr(state, "answer_hints", []),
+        "qa_review": getattr(state, "qa_review", []),
+        "brief": {
+            "notes": getattr(state, "brief_notes", ""),
+            "points": getattr(state, "brief_points", []),
+            "planned_minutes": getattr(state, "planned_minutes", 0),
+        },
+        "recap": getattr(state, "recap", {}),
+        "client_moods": getattr(state, "client_moods", []),
+        "interruptions": getattr(state, "interruptions", 0),
+        "transcription_health": getattr(state, "transcription_health", {}),
     }
+
+
+def _filler_count(state) -> int:
+    # Transcript-derived count when available; interruption count otherwise.
+    fn = getattr(state, "scored_filler_count", None)
+    return fn() if callable(fn) else state.filler_count
+
+
+def _eye_drops(state) -> int:
+    fn = getattr(state, "scored_eye_drops", None)
+    return fn() if callable(fn) else state.eye_contact_drops
 
 
 def _score_filler(count: int, duration_min: float) -> int:

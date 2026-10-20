@@ -45,3 +45,12 @@ env.yaml
 prompt.md
 hackathon.txt
 guide.md
+
+# Local SQLite storage
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local backup of uncommitted changes (history lives in git now)
+LOCAL_CHANGES.patch

@@ -30,6 +30,7 @@ def make_live_coach_agent(state: SessionState) -> LlmAgent:
         screen_enabled=state.screen_enabled,
         demo_mode=state.demo_mode,
         previous_summary=state.previous_summary,
+        meeting=state.session_kind == "meeting",
     )
 
     return LlmAgent(

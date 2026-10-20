@@ -14,8 +14,14 @@ RUN uv pip install --system --no-cache -r requirements.txt \
 COPY backend/ backend/
 COPY frontend/ frontend/
 
-# Non-root user for Cloud Run security best practices
-RUN adduser --disabled-password --gecos '' appuser && chown -R appuser /app
+# Non-root user for Cloud Run security best practices.
+# /app/data holds the SQLite database; created here so a mounted named volume
+# inherits appuser ownership and stays writable.
+RUN adduser --disabled-password --gecos '' appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser /app
+ENV LOCAL_DB_PATH=/app/data/pitchmirror.db
+VOLUME ["/app/data"]
 USER appuser
 
 EXPOSE 8080

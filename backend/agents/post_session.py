@@ -28,7 +28,14 @@ so RESEARCH_AGENT is isolated with only google_search.
 from google.adk.agents import LlmAgent, ParallelAgent, SequentialAgent
 from google.adk.tools import google_search
 
-from backend.coach import ANALYSIS_MODEL
+import os
+
+from backend.coach import ANALYSIS_MODEL, RESEARCH_MODEL, SUMMARY_MODEL
+
+# Google Search grounding has no free-tier quota on some API keys; set
+# PITCHMIRROR_RESEARCH_SEARCH=false to have the research agent answer from model
+# knowledge instead of failing with 429.
+_RESEARCH_USE_SEARCH = os.getenv("PITCHMIRROR_RESEARCH_SEARCH", "true").strip().lower() not in {"0", "false", "no"}
 
 
 DELIVERY_ANALYST = LlmAgent(
@@ -81,8 +88,8 @@ Format: one concise bullet per dimension. Quote the transcript. No preamble.""",
 
 RESEARCH_AGENT = LlmAgent(
     name="research_agent",
-    model=ANALYSIS_MODEL,
-    tools=[google_search],
+    model=RESEARCH_MODEL,
+    tools=[google_search] if _RESEARCH_USE_SEARCH else [],
     instruction="""You are finding expert-backed, evidence-based speaking improvement recommendations.
 
 The session's coaching events and transcript are in your context. They show the presenter's specific weaknesses.
@@ -168,7 +175,7 @@ Rules:
 
 SESSION_SUMMARY_AGENT = LlmAgent(
     name="session_summary_agent",
-    model=ANALYSIS_MODEL,
+    model=SUMMARY_MODEL,
     instruction="""Given this session's coaching events, AI scores, and synthesis report,
 output a compact JSON skill profile for this presenter. Output ONLY valid JSON, no markdown fences:
 
@@ -188,6 +195,50 @@ Rules:
 - session_score: integer 0-100 from the overall scorecard
 - Output ONLY the JSON object — no commentary, no code fences, no explanation""",
     output_key="session_profile_json",
+)
+
+QA_REVIEW_AGENT = LlmAgent(
+    name="qa_review_agent",
+    model=ANALYSIS_MODEL,
+    instruction="""You review a presenter's answers to questions asked in a real meeting
+(job interview, investor pitch, sales call). You get a numbered list of QUESTION / ANSWER pairs
+taken from a live transcript (transcription may have small errors — judge the substance).
+
+For EACH pair output an object:
+{
+  "index": <the pair number>,
+  "rating": <integer 1-5; 5 = complete, specific, well-structured, directly answers>,
+  "verdict": "<one short sentence: did it answer the question?>",
+  "worked": "<what was good, one short sentence; empty string if nothing>",
+  "improve": "<the single most important fix, one short sentence>",
+  "better_answer": "<a stronger sample answer in 2-4 sentences, first person, reusing the presenter's own facts; never invent numbers — use [placeholders] for missing specifics>"
+}
+For interview questions favour STAR (situation, task, action, result); for pitch questions:
+problem, proof, ask; for sales: pain, value, next step.
+
+Output ONLY a valid JSON array of these objects — no markdown fences, no commentary.""",
+    output_key="qa_review_json",
+)
+
+RECAP_AGENT = LlmAgent(
+    name="recap_agent",
+    model=ANALYSIS_MODEL,
+    instruction="""You write the after-call recap of a real meeting (client call, interview, pitch)
+for the presenter ("You" in the transcript; "Them" are the other participants). The transcript
+comes from live speech recognition and may contain small errors. A pre-call brief may be included.
+
+Output ONLY a valid JSON object, no markdown fences:
+{
+  "summary": "<3-5 sentences: purpose, what was discussed, where it landed>",
+  "decisions": ["<decision or agreement reached>", ...],
+  "action_items": [{"owner": "You" | "Them" | "<name if said>", "task": "<what>", "due": "<when, or empty>"}, ...],
+  "open_questions": ["<question left unanswered or to follow up>", ...],
+  "client_signals": ["<notable interest, concern or objection from Them>", ...],
+  "follow_up_email": {"subject": "<short subject>", "body": "<ready-to-send email from the presenter to the other party: thank them, recap key points and decisions, list next steps with owners/dates, close warmly; plain text, 120-220 words; use [Name] where a name wasn't said>"}
+}
+Rules: only include what was actually said — never invent numbers, names, dates or commitments.
+Use empty arrays when nothing applies. Write in the language the presenter mostly used.""",
+    output_key="recap_json",
 )
 
 # ── ADK pipeline declarations ──────────────────────────────────────────────
