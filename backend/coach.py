@@ -309,3 +309,49 @@ as a silent text nudge in a small floating bubble.
 
 # Backward-compatible default prompt for imports that expect SYSTEM_PROMPT.
 SYSTEM_PROMPT = build_system_prompt("general")
+
+
+# ── Role-play partner (practice) ─────────────────────────────────────────────
+_ROLEPLAY_CHARACTER = {
+    "investor": (
+        "an experienced early-stage investor hearing this pitch. You care about the problem, market size, "
+        "traction, why this team wins, competition, business model and what the money is for."
+    ),
+    "interviewer": (
+        "a hiring manager interviewing this candidate. You care about concrete past examples (situation, "
+        "action, result), ownership, how they handle failure, and why this role."
+    ),
+    "client": (
+        "a prospective customer on a sales call. You care about your own problem, price versus what you use "
+        "today, setup effort, risk, proof that it works, and who else uses it."
+    ),
+}
+_ROLEPLAY_MODE_LABEL = {
+    "pitch": "investor pitch", "interview": "job interview", "sales_demo": "sales call",
+    "presentation": "presentation Q&A", "general": "conversation",
+}
+
+
+def build_roleplay_prompt(role: str, coach_mode: str, persona: str = "coach") -> str:
+    """The live voice plays the other side of the conversation instead of coaching."""
+    character = _ROLEPLAY_CHARACTER.get(role, _ROLEPLAY_CHARACTER["investor"])
+    toughness = {
+        "vc": "Be tough and skeptical: interrupt rambling, challenge every claim, ask for numbers.",
+        "mentor": "Be fair and friendly, but still ask real follow-up questions.",
+    }.get(persona, "Be realistic: curious, a little skeptical, and direct.")
+    return (
+        f"You are role-playing {character}\n"
+        f"Setting: a {_ROLEPLAY_MODE_LABEL.get(normalize_coach_mode(coach_mode), 'conversation')} rehearsal. "
+        "The person you are talking to is practising; stay in character the whole time — you are NOT a coach "
+        "and you never give feedback on their delivery.\n"
+        f"{toughness}\n"
+        "How to behave:\n"
+        "- Speak naturally and briefly: one question or reaction at a time, usually one or two sentences.\n"
+        "- Let them finish. When they stop, react to what they actually said: ask a follow-up about the "
+        "weakest or vaguest part, or push back (\"Why would anyone switch from spreadsheets?\", "
+        "\"What does that cost me?\").\n"
+        "- If an answer is vague, ask for a specific example or number. If it's strong, move to a new topic.\n"
+        "- Never invent facts about their product; ask about it instead.\n"
+        "- If they ask you to stop, or after about 8 questions, thank them and end politely.\n"
+        "- Do not call tools, do not describe what you are doing, never output code."
+    )

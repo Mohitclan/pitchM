@@ -107,6 +107,9 @@
   const commitPanel = $('mt-commit-panel');
   const commitList = $('mt-commit-list');
   const commitCount = $('mt-commit-count');
+  const factsPanel = $('mt-facts-panel');
+  const factsList = $('mt-facts-list');
+  const factsCount = $('mt-facts-count');
   const rehearseBtn = $('mt-rehearse-btn');
   const rehearseBody = $('mt-rehearse-body');
 
@@ -807,6 +810,9 @@
       case 'previous_call':
         showPreviousCall(msg.call);
         break;
+      case 'facts':
+        renderFacts(msg.items);
+        break;
       case 'coach_cue':
         setCue(msg.index, msg.text);
         showNudge(msg.text, 'alert', { index: Number(msg.index) });
@@ -850,6 +856,27 @@
       showNudge(`🤝 Noted: ${c.task}${c.due ? ` (${c.due})` : ''}`, 'nudge', { urgent: true });
     }
     fitPipWindow();
+  }
+
+  /* ── Facts card ─────────────────────────────────── */
+  const FACT_ICONS = { person: '👤', number: '#', date: '📅', need: '🎯', tool: '🧰' };
+  const FACT_ORDER = ['person', 'need', 'number', 'date', 'tool'];
+
+  /** Names, numbers, dates, needs and tools said in the call — page list + latest three in the notch. */
+  function renderFacts(items) {
+    const facts = Array.isArray(items) ? items : [];
+    factsPanel.classList.toggle('hidden', !facts.length);
+    factsCount.textContent = facts.length ? `${facts.length} noted` : '';
+    const sorted = facts.slice().sort((a, b) => FACT_ORDER.indexOf(a.kind) - FACT_ORDER.indexOf(b.kind) || a.ts - b.ts);
+    factsList.innerHTML = sorted.map((f) => `
+      <li class="fact-${esc(f.kind)}" title="${esc(f.kind)} · ${fmt(f.ts || 0)}">
+        <span class="mt-fact-icon" aria-hidden="true">${FACT_ICONS[f.kind] || '•'}</span>${esc(f.text)}</li>`).join('');
+    const row = b('.pm-facts');
+    if (row) {
+      row.classList.toggle('hidden', !facts.length);
+      row.querySelector('.pm-facts-text').textContent = facts.slice(-3).reverse().map((f) => f.text).join(' · ');
+      fitPipWindow();
+    }
   }
 
   /* ── Past-call memory ───────────────────────────── */

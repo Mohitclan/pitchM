@@ -242,3 +242,10 @@
 .mt-commit-list li.is-you b { color: var(--accent); }
 .mt-commit-list li.is-them b { color: var(--teal); }
 .mt-commit-list em { font-style: normal; color: var(--muted); }
+
+/* ── Facts card (live page) ── */
+.mt-facts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.mt-facts-list li { font-size: 12.5px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-hi); color: var(--text); background: #fff; display: inline-flex; gap: 6px; align-items: center; }
+.mt-facts-list li.fact-person { border-color: rgba(29, 78, 216, 0.35); }
+.mt-facts-list li.fact-need { border-color: rgba(124, 58, 237, 0.35); }
+.mt-fact-icon { font-size: 11px; color: var(--muted); }

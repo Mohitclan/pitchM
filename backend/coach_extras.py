@@ -135,6 +135,7 @@ def previous_call_summary(payload: dict) -> dict:
         "objections": list(recap.get("client_signals") or [])[:6],
         "promised": promised[:6],
         "their_commitments": [c["task"] for c in commitments if c.get("owner") == "them" and c.get("task")][:4],
+        "facts": [f["text"] for f in payload.get("facts") or [] if isinstance(f, dict) and f.get("text")][:8],
     }
 
 
@@ -149,6 +150,8 @@ def previous_call_context(prev: dict, *, max_chars: int = 1200) -> str:
         parts.append("Their concerns last time: " + "; ".join(prev["objections"]))
     if prev.get("promised"):
         parts.append("You promised: " + "; ".join(prev["promised"]))
+    if prev.get("facts"):
+        parts.append("Facts from last time: " + "; ".join(prev["facts"]))
     return "\n".join(parts)[:max_chars]
 
 
@@ -305,3 +308,115 @@ def clean_goals(raw) -> list[dict]:
         out.append({"metric": metric, "target": round(target, 2),
                     "created_at": int(item.get("created_at") or time.time())})
     return out[:MAX_GOALS]
+
+
+# ── Live facts card (meeting) ────────────────────────────────────────────────
+# Names, numbers, dates, needs and current tools said in the call, so the presenter can
+# reuse them ("Priya", "40 stores", "go live in March") and they reach the follow-up email.
+FACT_KINDS = ("person", "number", "date", "need", "tool")
+MAX_FACTS = 40
+FACTS_CHECK_EVERY_S = 20.0
+FACTS_MIN_NEW_WORDS = 12
+# Cheap pre-check on the new lines: skip the model call when nothing fact-like was said.
+FACT_HINT_RE = re.compile(
+    r"\d|\$|€|£|₹|%|\b(?:hundred|thousand|million|billion|lakh|crore|percent|"
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?|monday|tuesday|wednesday|thursday|friday|weekend|week|month|quarter|year|"
+    r"need|needs|want|wants|goal|problem|pain|budget|deadline|priority|team|using|use|currently|today|"
+    r"name|i'm|i am|my name|head of|manager|director|ceo|cto|founder|vp)\b",
+    re.IGNORECASE,
+)
+
+
+def facts_prompt(conversation: str, existing: list[dict]) -> str:
+    known = "; ".join(f["text"] for f in existing[-25:]) or "(none yet)"
+    return (
+        "Live meeting. Recent conversation (You = presenter, Them = the other side):\n"
+        f"{conversation}\n\n"
+        f"Facts already noted: {known}\n\n"
+        "List NEW concrete facts from this conversation that the presenter should remember and reuse: "
+        "PERSON (a name, with role or company if said), NUMBER (a quantity, price, size or metric, with what it "
+        "counts), DATE (a deadline, launch or meeting time, with what it is for), NEED (a goal, pain or "
+        "requirement Them stated), TOOL (what Them uses today, or a competitor). Skip anything vague, "
+        "already noted, or only said by You about your own product.\n"
+        "One per line: FACT: <PERSON|NUMBER|DATE|NEED|TOOL> | <fact, max 12 words> | <You|Them>\n"
+        "or exactly: NONE"
+    )
+
+
+def parse_facts(text: str) -> list[dict]:
+    out = []
+    for line in (text or "").splitlines():
+        m = re.match(r"\s*fact\s*:\s*(.+)", line, re.IGNORECASE)
+        if not m:
+            continue
+        parts = [p.strip() for p in m.group(1).split("|")]
+        if len(parts) < 2:
+            continue
+        kind = parts[0].lower()
+        fact = " ".join(parts[1].split()).strip(" .")[:120]
+        who = "you" if len(parts) > 2 and parts[2].strip().lower().startswith("you") else "them"
+        if kind in FACT_KINDS and fact:
+            out.append({"kind": kind, "text": fact, "who": who})
+    return out[:6]
+
+
+def facts_text(facts: list[dict]) -> str:
+    return "\n".join(f"- {f['kind'].upper()}: {f['text']}" for f in facts)
+
+
+# ── Pitch versions (practice) ────────────────────────────────────────────────
+MAX_PITCH_POINTS = 10
+
+
+def normalize_pitch(name: str) -> str:
+    return " ".join(re.sub(r"[^\w&.'+ -]+", " ", name or "").split())[:80]
+
+
+def pitch_key(name: str) -> str:
+    return normalize_pitch(name).lower()
+
+
+def pitch_version_row(payload: dict) -> dict:
+    """One saved practice run of a named pitch, for the versions table."""
+    pitch = payload.get("pitch") or {}
+    points = [p for p in pitch.get("points") or [] if isinstance(p, dict)]
+    trend = session_trend_point(payload)
+    return {
+        "session_id": payload.get("session_id"),
+        "version": pitch.get("version"),
+        "created_at": payload.get("created_at"),
+        "score": None if payload.get("insufficient_speech") else payload.get("overall_score"),
+        "duration_seconds": payload.get("duration_seconds"),
+        "words": sum(len(str(seg.get("t") or "").split()) for seg in payload.get("transcript") or []
+                     if isinstance(seg, dict) and seg.get("s") == "u"),
+        "fillers_per_min": trend.get("fillers_per_min"),
+        "wpm": trend.get("wpm"),
+        "points_hit": sum(1 for p in points if p.get("covered")),
+        "points_total": len(points),
+        "points": points,
+    }
+
+
+def group_pitch_versions(sessions: list[dict]) -> list[dict]:
+    """Saved sessions → [{name, versions: [oldest … newest]}], most recently practised first."""
+    groups: dict[str, dict] = {}
+    for payload in sessions:
+        pitch = payload.get("pitch") or {}
+        key = pitch_key(pitch.get("name", ""))
+        if not key:
+            continue
+        g = groups.setdefault(key, {"name": pitch.get("name"), "versions": [], "last_at": 0})
+        g["versions"].append(pitch_version_row(payload))
+        g["last_at"] = max(g["last_at"], int(payload.get("created_at") or 0))
+    out = []
+    for g in groups.values():
+        g["versions"].sort(key=lambda v: (v.get("created_at") or 0))
+        out.append(g)
+    out.sort(key=lambda g: g["last_at"], reverse=True)
+    return out
+
+
+# ── Role-play partner (practice) ─────────────────────────────────────────────
+ROLEPLAY_ROLES = ("investor", "interviewer", "client")
+ROLEPLAY_LABELS = {"investor": "Investor", "interviewer": "Interviewer", "client": "Client"}

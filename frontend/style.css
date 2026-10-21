@@ -2112,3 +2112,43 @@ main {
 .goal-check.is-miss { color: var(--warn); background: rgba(217, 119, 6, 0.08); }
 .goal-state.is-behind { color: var(--text-muted); }
 .rv-ignored { font-size: 11.5px; color: var(--text-muted); margin: -4px 0 6px; line-height: 1.45; }
+
+/* Intake: pitch name / key points / partner */
+.config-label em, .config-toggle em { font-style: normal; font-weight: 500; color: var(--text-muted); }
+.config-textarea { resize: vertical; line-height: 1.45; font-weight: 500; }
+input.config-select { font-weight: 500; }
+
+/* Role-play partner lines in the live transcript */
+.transcript-line.partner .transcript-speaker { color: var(--warn); }
+.transcript-line.partner .transcript-text { background: rgba(217, 119, 6, 0.06); border-left: 2px solid rgba(217, 119, 6, 0.45); padding: 6px 10px; border-radius: var(--radius-xs); }
+
+/* Video replay (local recording) */
+.video-replay { margin: 4px 0 16px; display: flex; flex-direction: column; gap: 8px; }
+.vr-actions { margin-left: auto; display: inline-flex; gap: 6px; text-transform: none; letter-spacing: 0; }
+.vr-actions .asset-download { cursor: pointer; }
+.vr-video { width: 100%; max-height: 360px; background: #0c1422; border-radius: var(--radius-sm); }
+.vr-moments { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.vr-moment { font: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border-hi); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.vr-moment:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Pitch versions */
+.pitch-versions { margin: 4px 0 16px; padding: 14px 16px; border: 1px solid rgba(29, 78, 216, 0.2); border-radius: var(--radius); background: linear-gradient(180deg, rgba(29,78,216,0.04), transparent); }
+.pv-compare { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.pv-up { color: var(--success); font-weight: 700; }
+.pv-down { color: var(--danger); font-weight: 700; }
+.pv-same { color: var(--text-muted); font-weight: 700; }
+.pv-points { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; }
+.pv-points li.done { color: var(--success); }
+.pv-points li.missed { color: var(--danger); }
+.pv-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.pv-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pv-table th { text-align: left; font-size: 10px; color: var(--text-muted); font-weight: 700; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.pv-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); color: var(--text); }
+.pv-table tr { cursor: pointer; }
+.pv-table tr:hover td { background: var(--surface-2); }
+.pv-table tr.is-current td { font-weight: 700; background: var(--accent-dim); }
+.history-kind.is-pitch { color: var(--accent); background: var(--accent-dim); }
+
+/* Recap: key facts */
+.rc-facts { list-style: none; padding-left: 0 !important; }
+.rc-facts b { color: var(--text); font-weight: 700; }

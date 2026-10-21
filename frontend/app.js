@@ -68,6 +68,7 @@ function buildWsUrl(sessionCfg = {}) {
   if (sessionCfg.primaryGoal) url.searchParams.set('goal', sessionCfg.primaryGoal);
   if (sessionCfg.screenEnabled) url.searchParams.set('screen', '1');
   if (sessionCfg.demoMode) url.searchParams.set('demo', '1');
+  if (sessionCfg.roleplay) url.searchParams.set('roleplay', sessionCfg.roleplay);
   return url.toString();
 }
 
@@ -192,6 +193,37 @@ const slideUploadBtn = document.getElementById('slide-upload-btn');
 const slideUploadStatus = document.getElementById('slide-upload-status');
 const screenShareToggle = document.getElementById('screen-share-toggle');
 const demoModeToggle = document.getElementById('demo-mode-toggle');
+const practicePartnerSelect = document.getElementById('practice-partner');
+const pitchNameInput = document.getElementById('pitch-name');
+const pitchPointsInput = document.getElementById('pitch-points');
+const recordVideoToggle = document.getElementById('record-video-toggle');
+const PRACTICE_EXTRAS_KEY = 'pitchmirror_practice_extras';
+const ROLEPLAY_LABELS = { investor: 'Investor', interviewer: 'Interviewer', client: 'Client' };
+try {
+  const saved = JSON.parse(localStorage.getItem(PRACTICE_EXTRAS_KEY) || '{}');
+  if (practicePartnerSelect && typeof saved.partner === 'string') practicePartnerSelect.value = saved.partner;
+  if (pitchNameInput && saved.pitch) pitchNameInput.value = saved.pitch;
+  if (pitchPointsInput && saved.points) pitchPointsInput.value = saved.points;
+  if (recordVideoToggle && typeof saved.record === 'boolean') recordVideoToggle.checked = saved.record;
+} catch (_) { /* first visit */ }
+
+function savePracticeExtras() {
+  try {
+    localStorage.setItem(PRACTICE_EXTRAS_KEY, JSON.stringify({
+      partner: practicePartnerSelect?.value || '',
+      pitch: (pitchNameInput?.value || '').trim(),
+      points: pitchPointsInput?.value || '',
+      record: !!recordVideoToggle?.checked,
+    }));
+  } catch (_) { /* storage blocked */ }
+}
+
+let _sessionRoleplay = '';
+
+const _practiceInputs = [practicePartnerSelect, pitchNameInput, pitchPointsInput, recordVideoToggle];
+function setPracticeInputsDisabled(disabled) {
+  _practiceInputs.forEach((el) => { if (el) el.disabled = disabled; });
+}
 
 if (coachPersonaSelect) {
   const savedPersona = window.localStorage.getItem('pitchmirror_coach_persona');
@@ -520,7 +552,13 @@ async function startSession() {
     primaryGoal: primaryGoalSelect?.value || 'balanced',
     screenEnabled: !!screenShareToggle?.checked,
     demoMode: !!demoModeToggle?.checked,
+    roleplay: practicePartnerSelect?.value || '',
+    pitchName: (pitchNameInput?.value || '').trim(),
+    pitchPoints: (pitchPointsInput?.value || '').split('\n').map((x) => x.trim()).filter(Boolean),
+    recordVideo: !!recordVideoToggle?.checked,
   };
+  savePracticeExtras();
+  _sessionRoleplay = sessionCfg.roleplay;
 
   // 1. Get user media
   localStream = await navigator.mediaDevices.getUserMedia({
@@ -558,6 +596,10 @@ async function startSession() {
 
   ws.onopen = () => {
     console.log('WebSocket connected');
+    if (sessionCfg.pitchName || sessionCfg.roleplay) {
+      ws.send(JSON.stringify({ type: 'pitch', name: sessionCfg.pitchName, points: sessionCfg.pitchPoints }));
+    }
+    if (sessionCfg.recordVideo) startReplayRecording();
     sessionActive = true;
     window.__pmSessionActive = true;
     startAudioCapture();
@@ -610,6 +652,7 @@ async function startSession() {
   if (primaryGoalSelect) primaryGoalSelect.disabled = true;
   if (screenShareToggle) screenShareToggle.disabled = true;
   if (demoModeToggle) demoModeToggle.disabled = true;
+  setPracticeInputsDisabled(true);
   const historyBtn = document.getElementById('btn-history');
   if (historyBtn) historyBtn.disabled = true;
   liveMetrics.classList.remove('hidden');
@@ -862,6 +905,7 @@ function stopSession() {
   }
 
   if (videoInterval) { clearInterval(videoInterval); videoInterval = null; }
+  stopReplayRecording();
   stopGazeTracking();
   stopScreenCapture();
   if (audioWorklet)  { audioWorklet.port.onmessage = null; audioWorklet.pmSource?.disconnect(); audioWorklet.disconnect(); audioWorklet = null; }
@@ -883,6 +927,7 @@ function stopSession() {
   if (primaryGoalSelect) primaryGoalSelect.disabled = false;
   if (screenShareToggle) screenShareToggle.disabled = !SUPPORTS_SCREEN_SHARE;
   if (demoModeToggle) demoModeToggle.disabled = false;
+  setPracticeInputsDisabled(false);
   const historyBtn = document.getElementById('btn-history');
   if (historyBtn) historyBtn.disabled = false;
   recIndicator.classList.add('hidden');
@@ -962,6 +1007,7 @@ function handleServerMessage(event) {
       handleStatus(msg.state, msg.message);
       if (msg.state === 'connected' && msg.session_id) {
         _currentSessionId = msg.session_id;
+        _replayRec.sessionId = msg.session_id;
       }
       if (msg.state === 'connected') {
         if (msg.coach_mode && coachModeSelect) {
@@ -1265,7 +1311,7 @@ function addTranscriptLine(speaker, text, raw = false) {
     line.className = `transcript-line ${normalizedSpeaker}`;
     line.innerHTML = `
       <span class="transcript-meta">
-        <span class="transcript-speaker">${normalizedSpeaker === 'coach' ? 'Coach' : 'You'}</span>
+        <span class="transcript-speaker">${normalizedSpeaker === 'coach' ? 'Coach' : normalizedSpeaker === 'partner' ? escapeHtml(ROLEPLAY_LABELS[_sessionRoleplay] || 'Partner') : 'You'}</span>
         <span class="transcript-time">${escapeHtml(_sessionElapsedLabel())}</span>
       </span>
       <span class="transcript-text"></span>
@@ -1868,11 +1914,12 @@ function renderStarRow(stars) {
 const TOOL_TEXT_RE = /tool_code|tool_call|default_api|\b(flag_issue|check_eye_contact|get_speech_metrics|draw_overlay|get_recent_transcript)\b/i;
 
 function _transcriptRows(data) {
+  const them = ROLEPLAY_LABELS[data.roleplay_role] || 'Them';
   return (data.transcript || [])
     .filter((seg) => seg && seg.t && String(seg.t).trim())
     .filter((seg) => !(seg.s === 'c' && TOOL_TEXT_RE.test(String(seg.t))))
     .map((seg) => ({
-      speaker: seg.s === 'c' ? 'Coach' : seg.s === 'o' ? 'Them' : 'You',
+      speaker: seg.s === 'c' ? 'Coach' : seg.s === 'o' ? them : 'You',
       text: String(seg.t).trim(),
       ts: Number(seg.ts) || 0,
     }));
@@ -1953,6 +2000,11 @@ function _reviewPlainText(data) {
     points.forEach((p) => out.push(`  ${p.covered ? '[x]' : '[ ]'} ${p.text}`));
   }
 
+  const factRows = Array.isArray(data.facts) ? data.facts : [];
+  if (factRows.length) {
+    out.push('', `== KEY FACTS (${factRows.length}) ==`);
+    factRows.forEach((f) => out.push(`  ${f.kind}: ${f.text}`));
+  }
   const commits = Array.isArray(data.commitments) ? data.commitments : [];
   if (commits.length) {
     out.push('', `== COMMITMENTS (${commits.length}) ==`);
@@ -2007,13 +2059,20 @@ function renderRecap(data) {
   const r = data.recap || {};
   const points = data.brief?.points || [];
   const commitments = Array.isArray(data.commitments) ? data.commitments : [];
-  const hasRecap = r.summary || (r.action_items || []).length || r.follow_up_email?.body || commitments.length;
+  const facts = Array.isArray(data.facts) ? data.facts : [];
+  const hasRecap = r.summary || (r.action_items || []).length || r.follow_up_email?.body || commitments.length || facts.length;
   const moods = (data.client_moods || []).filter((m, i, arr) => i === 0 || m.mood !== arr[i - 1].mood);
   if (!hasRecap && !points.length && !moods.length) return '';
   const commitHtml = commitments.length
     ? `<div class="rc-block"><div class="rc-title">Commitments made <span class="report-badge">${commitments.length}</span></div>
         <ul class="rc-commits">${commitments.map((c) => `<li><span class="rc-owner is-${c.owner === 'you' ? 'you' : 'them'}">${c.owner === 'you' ? 'You' : 'Them'}</span>
           ${escapeHtml(c.task)}${c.due ? ` <em>· ${escapeHtml(c.due)}</em>` : ''} <span class="sc-event-time">${formatTime(Number(c.ts) || 0)}</span></li>`).join('')}</ul></div>`
+    : '';
+  const FACT_TITLES = { person: 'People', number: 'Numbers', date: 'Dates', need: 'Needs', tool: 'Current tools' };
+  const factsHtml = facts.length
+    ? `<div class="rc-block"><div class="rc-title">Key facts <span class="report-badge">${facts.length}</span></div>
+        <ul class="rc-facts">${Object.keys(FACT_TITLES).filter((k) => facts.some((f) => f.kind === k)).map((k) =>
+          `<li><b>${FACT_TITLES[k]}:</b> ${facts.filter((f) => f.kind === k).map((f) => escapeHtml(f.text)).join(' · ')}</li>`).join('')}</ul></div>`
     : '';
   const talk = data.talk_stats || {};
   const talkHtml = talk.you_share != null
@@ -2073,6 +2132,7 @@ function renderRecap(data) {
       ${exportHtml}
       <div class="rc-grid">
         ${coverage}
+        ${factsHtml}
         ${commitHtml}
         ${talkHtml}
         ${moodHtml}
@@ -2117,6 +2177,7 @@ function _recapMarkdown(data) {
   if (commits.length) {
     out.push('## Commitments made', ...commits.map((c) => `- **${c.owner === 'you' ? 'You' : 'Them'}**: ${c.task}${c.due ? ` (${c.due})` : ''}`), '');
   }
+  list('Key facts', (data.facts || []).map((f) => `${f.kind}: ${f.text}`));
   list('Open questions', r.open_questions);
   list('Client signals', r.client_signals);
   const points = data.brief?.points || [];
@@ -2414,6 +2475,7 @@ async function finishRetry() {
 
 /** Scroll the review transcript to the line spoken at `ts` seconds and flash it. */
 function jumpToTime(ts) {
+  seekReplay(ts, { scroll: false });
   const col = document.getElementById('rv-transcript-body');
   if (!col) return;
   const lines = [...col.querySelectorAll('[data-ts]')];
@@ -2432,6 +2494,8 @@ function jumpToTime(ts) {
 
 /** Scroll the review transcript to coaching moment `i` and flash it. */
 function jumpToMoment(i) {
+  const m = _coachMoments(window._lastScorecardData || {})[i];
+  if (m) seekReplay(m.ts, { scroll: false });
   const marker = document.getElementById(`rv-marker-${i}`);
   const col = document.getElementById('rv-transcript-body');
   if (!marker || !col) return;
@@ -2453,7 +2517,7 @@ function renderReviewSection(data, reportBodyHtml, modeLabel) {
     .sort((x, y) => (x.ts - y.ts) || (x.kind === 'line' ? -1 : 1));
   const transcriptHtml = rows.length || moments.length
     ? items.map((it) => (it.kind === 'line'
-      ? `<div class="sc-transcript-line ${it.r.speaker === 'Coach' ? 'is-coach' : it.r.speaker === 'Them' ? 'is-them' : 'is-user'}" data-ts="${it.r.ts}">
+      ? `<div class="sc-transcript-line ${it.r.speaker === 'Coach' ? 'is-coach' : it.r.speaker === 'You' ? 'is-user' : 'is-them'}" data-ts="${it.r.ts}">
            <span class="sc-event-time">${formatTime(it.r.ts)}</span>
            <span class="sc-transcript-speaker">${it.r.speaker}</span>
            <span class="sc-transcript-text">${escapeHtml(it.r.text)}</span>
@@ -2597,8 +2661,10 @@ function renderScorecard(data) {
     </div>
     ${insufficientHtml}
     ${renderGoalCheck(data)}
+    ${renderPitchVersions(data)}
     ${renderRecap(data)}
     <div class="scorecard-categories">${catHtml}</div>
+    ${renderVideoReplay(data)}
     ${reviewHtml}
     ${renderQaReview(data)}
     ${renderRewrites(data)}
@@ -2637,6 +2703,8 @@ function renderScorecard(data) {
 
   bindReplayTimeline();
   bindFeedbackForm();
+  loadVideoReplay(data);
+  loadPitchVersions(data);
 }
 
 function renderReplayTimeline(data) {
@@ -2813,9 +2881,11 @@ async function showHistory() {
       const context = s.session_kind === 'meeting'
         ? `live meeting${s.platform ? ` · ${escapeHtml(PLATFORM_LABELS[s.platform] || s.platform)}` : ''}`
         : escapeHtml((s.delivery_context || 'virtual').replace(/_/g, ' '));
-      const kindBadge = s.session_kind === 'meeting'
+      const kindBadge = (s.session_kind === 'meeting'
         ? '<span class="history-kind is-meeting">Meeting</span>'
-        : '<span class="history-kind">Practice</span>';
+        : '<span class="history-kind">Practice</span>')
+        + (s.pitch_name ? ` <span class="history-kind is-pitch">${escapeHtml(s.pitch_name)} v${Number(s.pitch_version) || 1}</span>` : '')
+        + (s.roleplay_role ? ` <span class="history-kind">Role-play: ${escapeHtml(ROLEPLAY_LABELS[s.roleplay_role] || s.roleplay_role)}</span>` : '');
       const extra = [
         formatTime(Number(s.duration_seconds) || 0),
         s.words != null ? `${s.words} words` : '',
@@ -2861,6 +2931,201 @@ async function openPastSession(sessionId) {
       historyList.insertAdjacentHTML('afterbegin', '<div class="recent-empty">Could not open that session.</div>');
     }
   }
+}
+
+/* ── Video replay (recorded and kept in this browser only) ─── */
+// The webcam + mic are recorded with MediaRecorder while practising and stored in IndexedDB
+// under the session id. Nothing is uploaded; the review page plays it back at flagged moments.
+const REPLAY_DB = 'pitchlight_replays';
+const REPLAY_KEEP = 8;   // keep the most recent recordings only
+const _replayRec = { recorder: null, chunks: [], sessionId: null, mime: '' };
+let _replayUrl = null;
+
+function _replayDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+    const req = indexedDB.open(REPLAY_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('replays', { keyPath: 'id' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function _replayTx(mode, fn) {
+  const db = await _replayDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('replays', mode);
+    const out = fn(tx.objectStore('replays'));
+    tx.oncomplete = () => { db.close(); resolve(out?.result); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function saveReplay(id, blob, mime) {
+  await _replayTx('readwrite', (store) => store.put({ id, blob, mime, created: Date.now() }));
+  // Prune: keep the newest REPLAY_KEEP recordings.
+  const all = await _replayTx('readonly', (store) => store.getAll());
+  const old = (all || []).sort((a, b) => b.created - a.created).slice(REPLAY_KEEP);
+  for (const r of old) await _replayTx('readwrite', (store) => store.delete(r.id));
+}
+
+const getReplay = (id) => _replayTx('readonly', (store) => store.get(id));
+const deleteReplayRecord = (id) => _replayTx('readwrite', (store) => store.delete(id));
+
+function startReplayRecording() {
+  if (!localStream || !window.MediaRecorder) return;
+  const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+    .find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+  try {
+    const rec = new MediaRecorder(localStream, { mimeType: mime || undefined, videoBitsPerSecond: 600000, audioBitsPerSecond: 48000 });
+    _replayRec.recorder = rec;
+    _replayRec.chunks = [];
+    _replayRec.mime = rec.mimeType || mime || 'video/webm';
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) _replayRec.chunks.push(e.data); };
+    rec.onstop = () => {
+      const id = _replayRec.sessionId;
+      const chunks = _replayRec.chunks;
+      _replayRec.recorder = null;
+      _replayRec.chunks = [];
+      if (!id || !chunks.length) return;
+      saveReplay(id, new Blob(chunks, { type: _replayRec.mime }), _replayRec.mime)
+        .catch((err) => console.warn('replay save failed', err));
+    };
+    rec.start(1000);
+  } catch (err) {
+    console.warn('video recording unavailable', err);
+  }
+}
+
+function stopReplayRecording() {
+  const rec = _replayRec.recorder;
+  if (rec && rec.state !== 'inactive') {
+    try { rec.stop(); } catch (_) { /* already stopped */ }
+  }
+}
+
+function renderVideoReplay(data) {
+  if (data.session_kind === 'meeting' || !data.session_id) return '';
+  return `<div id="video-replay" class="video-replay hidden" data-sid="${escapeHtml(data.session_id)}"></div>`;
+}
+
+async function loadVideoReplay(data) {
+  const box = document.getElementById('video-replay');
+  if (!box) return;
+  let rec = null;
+  // The recording is written when the session stops; give it a moment on the live path.
+  for (let i = 0; i < 4 && !rec; i++) {
+    try { rec = await getReplay(data.session_id); } catch (_) { return; }
+    if (!rec) await new Promise((r) => setTimeout(r, 700));
+  }
+  if (!rec?.blob || box.dataset.sid !== data.session_id) return;
+  if (_replayUrl) URL.revokeObjectURL(_replayUrl);
+  _replayUrl = URL.createObjectURL(rec.blob);
+  const moments = _coachMoments(data).map((m) => ({ ts: m.ts, label: ISSUE_LABELS[m.type] || m.type }))
+    .concat((data.rewrites || []).map((w) => ({ ts: Number(w.ts) || 0, label: 'Say it better' })))
+    .concat((data.qa_review || []).map((q, i) => ({ ts: Number(q.ts) || 0, label: `Q${i + 1}` })))
+    .sort((a, b) => a.ts - b.ts);
+  const mb = rec.blob.size >= 104858 ? `${(rec.blob.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(rec.blob.size / 1024))} KB`;
+  box.innerHTML = `
+    <div class="sc-events-title">Video replay <span class="report-badge">on this device only · ${mb}</span>
+      <span class="vr-actions">
+        <a class="asset-download" href="${_replayUrl}" download="pitchlight-${escapeHtml(data.session_id.slice(0, 8))}.webm">Download</a>
+        <button type="button" class="asset-download" onclick="deleteReplay('${escapeHtml(data.session_id)}')">Delete</button>
+      </span></div>
+    <video id="vr-video" class="vr-video" src="${_replayUrl}" controls playsinline preload="metadata"></video>
+    ${moments.length ? `<div class="vr-moments"><span class="rc-title">Jump to</span>${moments.map((m) =>
+      `<button type="button" class="vr-moment" onclick="seekReplay(${m.ts})">${formatTime(m.ts)} · ${escapeHtml(m.label)}</button>`).join('')}</div>` : ''}`;
+  box.classList.remove('hidden');
+}
+
+/** Play the recording from a couple of seconds before `ts`. */
+function seekReplay(ts, { scroll = true } = {}) {
+  const v = document.getElementById('vr-video');
+  if (!v) return;
+  v.currentTime = Math.max(0, Number(ts) - 2);
+  v.play().catch(() => {});
+  if (scroll) v.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function deleteReplay(id) {
+  try { await deleteReplayRecord(id); } catch (_) { /* ignore */ }
+  const box = document.getElementById('video-replay');
+  if (box) { box.innerHTML = '<div class="recent-empty">Recording deleted from this device.</div>'; }
+  if (_replayUrl) { URL.revokeObjectURL(_replayUrl); _replayUrl = null; }
+}
+
+/* ── Pitch versions ──────────────────────────────── */
+let _pitches = [];
+
+async function loadPitchList() {
+  try {
+    const resp = await fetch('/api/pitches', { headers: authHeaders() });
+    if (!resp.ok) return [];
+    _pitches = (await resp.json()).pitches || [];
+  } catch (_) {
+    _pitches = [];
+  }
+  const list = document.getElementById('pitch-names');
+  if (list) list.innerHTML = _pitches.map((p) => `<option value="${escapeHtml(p.name)}">`).join('');
+  return _pitches;
+}
+
+const _pitchKey = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Choosing a saved pitch fills in its key points from the latest version. */
+function prefillPitchPoints() {
+  const g = _pitches.find((p) => _pitchKey(p.name) === _pitchKey(pitchNameInput?.value));
+  const latest = g?.versions?.[g.versions.length - 1];
+  const pts = (latest?.points || []).map((p) => p.text).filter(Boolean);
+  if (pts.length && pitchPointsInput && !pitchPointsInput.value.trim()) pitchPointsInput.value = pts.join('\n');
+}
+
+function renderPitchVersions(data) {
+  if (!data.pitch?.name) return '';
+  return `<div id="pitch-versions" class="pitch-versions" data-key="${escapeHtml(_pitchKey(data.pitch.name))}">
+    <div class="sc-events-title">${escapeHtml(data.pitch.name)} <span class="report-badge">version ${Number(data.pitch.version) || 1}</span></div>
+    <div class="recent-empty">Loading versions…</div></div>`;
+}
+
+function _delta(cur, prev, { lowerBetter = false, digits = 0, unit = '' } = {}) {
+  if (cur == null || prev == null || !Number.isFinite(cur) || !Number.isFinite(prev)) return '';
+  const d = cur - prev;
+  if (Math.abs(d) < (digits ? 0.05 : 0.5)) return '<span class="pv-same">±0</span>';
+  const good = lowerBetter ? d < 0 : d > 0;
+  return `<span class="${good ? 'pv-up' : 'pv-down'}">${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(digits)}${unit}</span>`;
+}
+
+async function loadPitchVersions(data) {
+  const box = document.getElementById('pitch-versions');
+  if (!box) return;
+  await loadPitchList();
+  const g = _pitches.find((p) => _pitchKey(p.name) === box.dataset.key);
+  const versions = g?.versions || [];
+  const idx = versions.findIndex((v) => v.session_id === data.session_id);
+  const cur = idx >= 0 ? versions[idx] : null;
+  const prev = idx > 0 ? versions[idx - 1] : null;
+  const points = (data.pitch?.points || []);
+  const hit = points.filter((p) => p.covered).length;
+  const fmtN = (v, d = 0) => (v == null || !Number.isFinite(Number(v)) ? '–' : Number(v).toFixed(d));
+  const compare = cur && prev
+    ? `<div class="pv-compare">vs v${prev.version}: score ${_delta(cur.score, prev.score, { digits: 1 })} ·
+        length ${_delta((cur.duration_seconds || 0) / 60, (prev.duration_seconds || 0) / 60, { digits: 1, unit: ' min' })} ·
+        fillers ${_delta(cur.fillers_per_min, prev.fillers_per_min, { lowerBetter: true, digits: 1, unit: '/min' })} ·
+        key points ${_delta(cur.points_hit, prev.points_hit)}</div>`
+    : (cur ? '<div class="pv-compare">First saved version — practise it again to compare.</div>' : '');
+  const rows = versions.slice().reverse().map((v) => `
+    <tr class="${v.session_id === data.session_id ? 'is-current' : ''}" role="button" tabindex="0"
+        onclick="openPastSession('${escapeHtml(v.session_id)}')" onkeydown="if (event.key === 'Enter') openPastSession('${escapeHtml(v.session_id)}')">
+      <td>v${v.version ?? '?'}</td><td>${escapeHtml(_sessionDate(v).toLocaleDateString())}</td>
+      <td>${fmtN(v.score, 1)}</td><td>${formatTime(Number(v.duration_seconds) || 0)}</td><td>${fmtN(v.words)}</td>
+      <td>${fmtN(v.fillers_per_min, 1)}</td><td>${v.points_total ? `${v.points_hit}/${v.points_total}` : '–'}</td></tr>`).join('');
+  box.innerHTML = `
+    <div class="sc-events-title">${escapeHtml(data.pitch.name)} <span class="report-badge">version ${Number(data.pitch.version) || 1} of ${versions.length || 1}</span></div>
+    ${compare}
+    ${points.length ? `<ul class="pv-points">${points.map((p) => `<li class="${p.covered ? 'done' : 'missed'}">${p.covered ? '✓' : '✗'} ${escapeHtml(p.text)}</li>`).join('')}</ul>
+      <div class="pv-sub">${hit}/${points.length} key points hit this time</div>` : ''}
+    ${versions.length > 1 ? `<table class="pv-table"><thead><tr><th>Version</th><th>Date</th><th>Score</th><th>Length</th><th>Words</th><th>Fillers/min</th><th>Key points</th></tr></thead>
+      <tbody>${rows}</tbody></table>` : ''}`;
 }
 
 /* ── Progress over time + practice goals ─────────── */
@@ -3170,6 +3435,8 @@ function renderGoalCheck(data) {
 }
 
 loadGoals();
+loadPitchList();
+pitchNameInput?.addEventListener('change', prefillPitchPoints);
 
 document.getElementById('btn-history')?.addEventListener('click', showHistory);
 

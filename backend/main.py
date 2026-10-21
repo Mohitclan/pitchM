@@ -124,6 +124,7 @@ CONFIRMED_ISSUE_WINDOW_S = 14.0
 # never above 12" — this server-side gate enforces that even if the model
 # ignores the instruction and produces a longer response.
 MAX_COACH_WORDS_PER_TURN = 14
+ROLEPLAY_MAX_WORDS_PER_TURN = 90   # a partner question/reaction, not a monologue
 _PROSODY_SPEECH_RMS_MIN = 0.010
 
 # ── Singletons (created once at startup) ─────────────────────────
@@ -829,6 +830,9 @@ def _session_summary(payload: dict) -> dict:
         "visual_score": (categories.get("visual_delivery") or {}).get("score"),
         "coaching_moments": len(payload.get("coaching_events") or []),
         "client": payload.get("client", ""),
+        "pitch_name": (payload.get("pitch") or {}).get("name", ""),
+        "pitch_version": (payload.get("pitch") or {}).get("version"),
+        "roleplay_role": payload.get("roleplay_role", ""),
         "words": sum(
             len(str(seg.get("t") or "").split())
             for seg in (payload.get("transcript") or [])
@@ -1114,6 +1118,13 @@ async def api_rehearsal_review(request: Request):
     return {"review": _merge_qa_review(pairs, raw, [])}
 
 
+@app.get("/api/pitches")
+async def api_pitches(request: Request):
+    """Named pitches with every saved version, for the intake autocomplete and the comparison."""
+    user_id = _request_user_scope(request)
+    return {"pitches": coach_extras.group_pitch_versions(await _db.list_recent(limit=100, user_id=user_id))}
+
+
 @app.get("/api/goals")
 async def api_get_goals(request: Request):
     user_id = _request_user_scope(request)
@@ -1311,6 +1322,8 @@ async def websocket_endpoint(websocket: WebSocket):
     session_kind = "meeting" if (websocket.query_params.get("kind") or "").lower() == "meeting" else "practice"
     raw_platform = (websocket.query_params.get("platform") or "").strip().lower()
     platform = raw_platform if raw_platform in _VALID_PLATFORMS else ("other" if session_kind == "meeting" else "")
+    raw_role = (websocket.query_params.get("roleplay") or "").strip().lower()
+    roleplay_role = raw_role if session_kind == "practice" and raw_role in coach_extras.ROLEPLAY_ROLES else ""
     if session_kind == "meeting":
         screen_enabled = False   # no slide/screen coaching while in a real call
         demo_mode = False
@@ -1339,6 +1352,7 @@ async def websocket_endpoint(websocket: WebSocket):
         previous_summary=previous_summary,
         total_slides=total_slides,
         current_slide_index=0,
+        roleplay_role=roleplay_role,
     )
     state.record_timeline(
         "session",
@@ -1419,6 +1433,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     tg.create_task(_meeting_nudge_watcher(state, live_request_queue), name="meeting_nudges")
                 else:
                     tg.create_task(_practice_voice_followup(state, live_request_queue), name="voice_followup")
+                    if state.roleplay_role:
+                        tg.create_task(_roleplay_kickoff_fallback(state), name="roleplay_kickoff")
                 # The client-audio transcriber starts lazily, on the first meeting-audio frame
                 # (see _upstream) — no idle session when nothing is shared.
                 if state.user_stt is not None:
@@ -2127,6 +2143,32 @@ async def _extract_commitments(state: SessionState, speaker: str, text: str) -> 
         logger.info("commitments session=%s added=%s", state.session_id, [r["task"] for r in added])
 
 
+async def _run_facts_check(state: SessionState) -> None:
+    """Pull names, numbers, dates, needs and tools out of the last couple of minutes."""
+    if len(state.facts) >= coach_extras.MAX_FACTS:
+        return
+    reply = await _quick_text(
+        coach_extras.facts_prompt(state.conversation_tail(seconds=120, max_chars=2400), state.facts),
+        max_tokens=220,
+    )
+    if not reply or reply.strip().upper().startswith("NONE"):
+        return
+    ts = round(state.duration_seconds(), 1)
+    added = []
+    for fact in coach_extras.parse_facts(reply):
+        if len(state.facts) >= coach_extras.MAX_FACTS:
+            break
+        if coach_extras.is_duplicate_commitment(fact["text"], [{"task": f["text"]} for f in state.facts]):
+            continue
+        row = {"ts": ts, **fact}
+        state.facts.append(row)
+        added.append(row)
+        state.record_timeline("fact", f"{fact['kind']}: {fact['text']}"[:220])
+    if added:
+        state._enqueue({"type": "facts", "items": state.facts, "added": added})
+        logger.info("facts session=%s added=%s", state.session_id, [f["text"] for f in added])
+
+
 async def _previous_call_for(user_id: str, client: str, *, exclude: str = "") -> dict:
     """Most recent saved meeting this user had with `client` (case-insensitive)."""
     key = coach_extras.client_key(client)
@@ -2151,6 +2193,60 @@ async def _load_previous_call(state: SessionState) -> None:
                     state.previous_call.get("session_id"))
 
 
+def _apply_pitch(state: SessionState, payload: dict) -> None:
+    """Practice: which named pitch this run is a version of, and the points it should hit."""
+    state.pitch_name = coach_extras.normalize_pitch(str(payload.get("name") or ""))
+    state.pitch_points = meeting_brief.clean_points(payload.get("points") or [])[: coach_extras.MAX_PITCH_POINTS]
+    if state.pitch_name:
+        state.record_timeline("pitch", f"Pitch: {state.pitch_name} ({len(state.pitch_points)} key points)")
+        logger.info("pitch session=%s name=%r points=%d", state.session_id, state.pitch_name, len(state.pitch_points))
+    _roleplay_kickoff(state)
+
+
+def _roleplay_kickoff(state: SessionState) -> None:
+    """Role-play: the partner opens the conversation (once), knowing what is being pitched."""
+    if not state.roleplay_role or state.roleplay_started or state.live_queue is None or state.live_closed:
+        return
+    state.roleplay_started = True
+    about = ""
+    if state.pitch_name:
+        about = f" They are presenting: {state.pitch_name}."
+        if state.pitch_points:
+            about += " Points they plan to make: " + "; ".join(state.pitch_points) + "."
+    state.live_queue.send_content(types.Content(role="user", parts=[types.Part(text=(
+        f"[start] Begin the role-play now.{about} Greet them in one short sentence and ask them to start "
+        "(for an interview, ask your first question). Then listen."
+    ))]))
+    state.record_timeline("roleplay", f"Role-play started as {state.roleplay_role}")
+    logger.info("roleplay_start session=%s role=%s", state.session_id, state.roleplay_role)
+
+
+async def _roleplay_kickoff_fallback(state: SessionState) -> None:
+    await asyncio.sleep(2.0)    # give the browser a moment to send the pitch details first
+    _roleplay_kickoff(state)
+
+
+async def _score_pitch_version(state: SessionState) -> None:
+    """Version number for this run of the named pitch + which key points it hit."""
+    if not state.pitch_name:
+        return
+    key = coach_extras.pitch_key(state.pitch_name)
+    previous = [s for s in await _db.list_recent(limit=100, user_id=state.user_id)
+                if coach_extras.pitch_key((s.get("pitch") or {}).get("name", "")) == key]
+    version = 1 + max([int((s.get("pitch") or {}).get("version") or 0) for s in previous] + [0])
+    rows = meeting_brief.new_point_rows(state.pitch_points)
+    if rows and state.user_word_count() >= 15:
+        reply = await _quick_text(
+            meeting_brief.coverage_prompt(rows, state.conversation_tail(seconds=10 ** 6, max_chars=8000)),
+            max_tokens=60, timeout=20.0,
+        )
+        for i in meeting_brief.parse_coverage_reply(reply, len(rows)) or set():
+            rows[i]["covered"] = True
+    state.pitch = {"name": state.pitch_name, "version": version, "points": rows}
+    logger.info("pitch_version session=%s %r v%d points=%d/%d", state.session_id, state.pitch_name, version,
+                sum(r["covered"] for r in rows), len(rows))
+
+
 def _brief_block(state: SessionState, *, max_chars: int = 1200) -> str:
     """Everything the live helpers and the recap should know before reading the call."""
     parts = []
@@ -2163,6 +2259,8 @@ def _brief_block(state: SessionState, *, max_chars: int = 1200) -> str:
         parts.append(previous)
     if state.commitments:
         parts.append("Commitments made so far:\n" + coach_extras.commitments_text(state.commitments))
+    if state.facts:
+        parts.append("Facts noted so far:\n" + coach_extras.facts_text(state.facts))
     return "\n".join(parts)
 
 
@@ -2232,7 +2330,9 @@ async def _practice_voice_followup(state: SessionState, live_request_queue: Live
             continue   # coach already spoke, or the issue has its own cue path (eye contact)
         # The live model, told to measure before speaking, tends to call tools instead of
         # voicing a requested cue — so the browser speaks it (speak=True) with its own voice.
-        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue, "speak": True})
+        # Role-play: the partner stays in character, so the cue is shown silently.
+        state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue,
+                        "speak": not state.roleplay_role, "silent": bool(state.roleplay_role)})
         logger.info("voice_followup session=%s issue=%s cue=%r", state.session_id, issue_type, cue)
 
 
@@ -2252,11 +2352,21 @@ async def _meeting_nudge_watcher(state: SessionState, live_request_queue: LiveRe
     words_at_last_coverage = 0
     last_mood_at = time.monotonic()
     them_words_at_last_mood = 0
+    last_facts_at = time.monotonic()
+    facts_since_ts = 0.0
     while not state.live_closed and state.is_active:
         await asyncio.sleep(3.0)
         if state.live_closed or not callable(state.flag_issue_fn):
             continue
         _maybe_brief_reminder(state)
+        if time.monotonic() - last_facts_at >= coach_extras.FACTS_CHECK_EVERY_S:
+            new_lines = [seg["t"] for seg in state.transcript
+                         if seg.get("s") in ("u", "o") and seg.get("te", seg["ts"]) > facts_since_ts]
+            if sum(len(t.split()) for t in new_lines) >= coach_extras.FACTS_MIN_NEW_WORDS:
+                last_facts_at = time.monotonic()
+                facts_since_ts = state.duration_seconds()
+                if coach_extras.FACT_HINT_RE.search(" ".join(new_lines)):
+                    asyncio.get_running_loop().create_task(_run_facts_check(state))
         them_words = sum(len(seg["t"].split()) for seg in state.transcript if seg.get("s") == "o")
         if time.monotonic() - last_mood_at >= 30.0 and them_words - them_words_at_last_mood >= 12:
             last_mood_at, them_words_at_last_mood = time.monotonic(), them_words
@@ -2341,7 +2451,7 @@ def _handle_confirmed_lookaway(
         "sensor": "browser_face_tracking",
     }
     result = state.flag_issue_fn("eye_contact", description, evidence) if callable(state.flag_issue_fn) else {}
-    if result.get("recorded") and state.session_kind == "meeting":
+    if result.get("recorded") and (state.session_kind == "meeting" or state.roleplay_role):
         # In a real call the cue is shown silently in the bubble; no model turn needed.
         state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue})
         logger.info("lookaway_cue session=%s cue=%r (meeting, silent)", state.session_id, cue)
@@ -2498,6 +2608,8 @@ async def _upstream(
                         _record_interruption(state, payload_json.get("overlap_s"))
                     if msg_type == "talk_time" and state.session_kind == "meeting":
                         _record_talk_time(state, payload_json)
+                    if msg_type == "pitch" and state.session_kind == "practice":
+                        _apply_pitch(state, payload_json)
                         continue
                     if msg_type == "gaze":
                         confirmed = state.update_browser_gaze(str(payload_json.get("state") or ""))
@@ -2640,6 +2752,12 @@ async def _downstream(
 
     async def _emit_coach_chunk(chunk: str) -> None:
         """Store + forward an allowed coach transcription chunk and attach it to the latest coaching event."""
+        if state.roleplay_role:
+            # The role-play partner is "the other side" — stored like a meeting's Them lines so
+            # the question-by-question review pairs its questions with the presenter's answers.
+            state.add_transcript("other", chunk, raw=True)
+            await websocket.send_json({"type": "transcript", "speaker": "partner", "text": chunk, "raw": True})
+            return
         state.add_transcript("coach", chunk, raw=True)
         await websocket.send_json({"type": "transcript", "speaker": "coach", "text": chunk, "raw": True})
         said = state.attach_coach_said(chunk)
@@ -2766,7 +2884,7 @@ async def _downstream(
                                 state.last_confirmed_issue_time > 0
                                 and issue_age <= CONFIRMED_ISSUE_WINDOW_S
                             )
-                            if elapsed >= COACH_SPEECH_COOLDOWN_S and has_recent_confirmed_issue:
+                            if state.roleplay_role or (elapsed >= COACH_SPEECH_COOLDOWN_S and has_recent_confirmed_issue):
                                 _suppress_turn = False
                                 _turn_committed = True
                                 state.last_coach_speech_time = now
@@ -2805,6 +2923,8 @@ async def _downstream(
                                     issue_age,
                                     state.session_id,
                                 )
+                        elif state.roleplay_role:
+                            pass    # role-play partner: a turn may have several speech segments
                         else:
                             # Second+ speech segment in the same turn — always suppress.
                             # This prevents duplicate coach feedback when the model speaks
@@ -2888,11 +3008,12 @@ async def _downstream(
                         )
                     # Hard word-count gate — enforce the short-correction rule even when
                     # the model ignores it.
-                    if not _suppress_turn and len(_turn_text.split()) > MAX_COACH_WORDS_PER_TURN:
+                    word_cap = ROLEPLAY_MAX_WORDS_PER_TURN if state.roleplay_role else MAX_COACH_WORDS_PER_TURN
+                    if not _suppress_turn and len(_turn_text.split()) > word_cap:
                         _suppress_turn = True
                         logger.info(
                             "coach_speech_too_long session=%s words=%d limit=%d — suppressing remainder",
-                            state.session_id, len(_turn_text.split()), MAX_COACH_WORDS_PER_TURN,
+                            state.session_id, len(_turn_text.split()), word_cap,
                         )
 
                     if _suppress_turn:
@@ -3256,6 +3377,8 @@ async def _run_post_session(websocket: WebSocket, state: SessionState):
             f"MEETING TYPE: {state.coach_mode}\n"
             + (f"PRE-CALL BRIEF:\n{brief}\n\n" if brief else "")
             + (f"COMMITMENTS NOTED LIVE:\n{coach_extras.commitments_text(state.commitments)}\n\n" if state.commitments else "")
+            + (f"FACTS NOTED LIVE (use the names and numbers in the email):\n{coach_extras.facts_text(state.facts)}\n\n"
+               if state.facts else "")
             + (f"TALK TIME: presenter {round(talk['you_share'] * 100)}% of the conversation\n\n"
                if talk.get("you_share") is not None else "")
             + f"TRANSCRIPT:\n{state.transcript_text()}",
@@ -3275,8 +3398,9 @@ async def _run_post_session(websocket: WebSocket, state: SessionState):
         await _safe_send(websocket, {"type": "pipeline_step", "step": "rewrite_done"})
         logger.info("Post-session rewrites done: %s (%d)", state.session_id, len(state.rewrites))
 
-    delivery_out, content_out, research_out, _, _, _ = await asyncio.gather(
-        run_delivery(), run_content(), run_research(), run_qa(), run_recap(), run_rewrite()
+    delivery_out, content_out, research_out, _, _, _, _ = await asyncio.gather(
+        run_delivery(), run_content(), run_research(), run_qa(), run_recap(), run_rewrite(),
+        _score_pitch_version(state),
     )
 
     # Surface degraded-quality risk when agents silently returned empty strings.

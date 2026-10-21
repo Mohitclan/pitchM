@@ -348,3 +348,28 @@ From the first two live tests (practice 3.5 min, Teams meeting 2.5 min; both ran
   ("start bolna start listen"). Stops at the first real line on each side; mid-talk lines and the other side
   are untouched. Removed text is saved as `ignored_chatter` and shown above the review transcript.
 - Live notch/meeting counters are unchanged (they still count only fillers while you speak).
+
+## Facts card, pitch versions, video replay, role-play partner — 2026-10-21
+
+- **Facts card (Meeting Mode).** Every ~20 s with ≥12 new words (and a cheap regex hint: numbers, months,
+  "need", "head of" …) the fast model lists new PERSON / NUMBER / DATE / NEED / TOOL facts
+  (`_run_facts_check`, `coach_extras.facts_prompt`). New `facts` WS message → "Facts card" chips on the page and
+  a "Facts:" row in the notch (latest three). Facts feed the live helpers (`_brief_block`), the recap agent (so
+  the follow-up email uses the names and numbers), the recap's "Key facts" block, exports, and the next call's
+  memory with that client.
+- **Pitch versions (practice).** Intake has "Pitch name" (autocomplete) + "Key points to hit"; the browser sends
+  `{type:"pitch", name, points}` after connect. After the session `_score_pitch_version` sets the version
+  (1 + highest saved for that name) and checks which key points were said. Review shows "<pitch> · version N",
+  deltas vs the previous version (score, length, fillers/min, key points) and a table of all versions
+  (`/api/pitches`). History rows carry a "<pitch> vN" badge. Choosing a saved pitch prefills its key points.
+- **Video replay (practice).** "Record video for replay" (on by default) records webcam + mic with MediaRecorder
+  into IndexedDB (`pitchlight_replays`, newest 8 kept) under the session id — never uploaded. The review shows
+  the player, "Jump to" buttons for every flagged moment / rewrite / question, and Download / Delete; clicking a
+  timeline marker or a coaching moment also seeks the video.
+- **AI role-play partner (practice).** "Practice with" → investor / interviewer / client (`?roleplay=`). The live
+  native-audio model gets a character prompt (`build_roleplay_prompt`, toughness from the coach style) and no
+  tools; the speech gate lets it talk (≤90 words a turn); it opens the conversation once (knowing the pitch name
+  and points). Its lines are stored as the other side (`o`), so the question-by-question review and side-by-side
+  stronger answers work; coaching cues stay silent cards. Cost: same free-tier live model as practice mode
+  (no Gemini charge on the current free key; a paid key would bill live minutes) + the usual Claude report.
+- Tests: 84 passing. Not yet tried live: a real role-play conversation, a real recording, a meeting with facts.

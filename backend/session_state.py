@@ -254,6 +254,15 @@ class SessionState:
     rewrites: list[dict] = field(default_factory=list)
     # Setup chatter removed from the start/end of the presenter's transcript [{ts, text}]
     ignored_chatter: list[dict] = field(default_factory=list)
+    # Meeting: concrete facts said in the call [{ts, kind, text, who}] (names, numbers, dates, needs, tools)
+    facts: list[dict] = field(default_factory=list)
+    # Practice: named pitch being rehearsed, its key points, and the result {name, version, points}
+    pitch_name: str = ""
+    pitch_points: list[str] = field(default_factory=list)
+    pitch: dict = field(default_factory=dict)
+    # Practice: "" (coach only) or the role the live voice plays: investor | interviewer | client
+    roleplay_role: str = ""
+    roleplay_started: bool = False
     # Per-stream transcriber stats (segments, connects, rollovers, stalls, errors).
     transcription_health: dict = field(default_factory=dict)
     screen_enabled: bool = False

@@ -221,6 +221,9 @@ def _session_extras(state) -> dict:
         "talk_stats": getattr(state, "talk_stats", {}),
         "rewrites": getattr(state, "rewrites", []),
         "ignored_chatter": getattr(state, "ignored_chatter", []),
+        "facts": getattr(state, "facts", []),
+        "pitch": getattr(state, "pitch", {}),
+        "roleplay_role": getattr(state, "roleplay_role", ""),
         "brief": {
             "notes": getattr(state, "brief_notes", ""),
             "points": getattr(state, "brief_points", []),

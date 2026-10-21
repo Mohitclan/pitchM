@@ -238,3 +238,108 @@ def test_setup_chatter_trimmed_at_edges_only():
     plain.transcript = [{"s": "u", "t": f"Real sentence number {i} about the product.", "ts": i * 10.0, "te": i * 10.0}
                         for i in range(5)]
     assert plain.trim_setup_chatter() == [] and len(plain.transcript) == 5
+
+
+def test_facts_extracted_and_deduped(monkeypatch):
+    import backend.main as m
+    from backend import coach_extras as cx
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-facts", session_kind="meeting")
+    s.add_transcript("other", "I'm Priya, head of ops. We have 40 stores and want to go live in March.")
+    replies = iter([
+        "FACT: PERSON | Priya, Head of Ops | Them\nFACT: NUMBER | 40 stores | Them\nFACT: DATE | Go live in March | Them",
+        "FACT: NUMBER | 40 stores | Them\nFACT: TOOL | Uses spreadsheets today | Them",
+    ])
+
+    async def fake_quick(prompt, **kw):
+        return next(replies)
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    asyncio.run(m._run_facts_check(s))
+    asyncio.run(m._run_facts_check(s))
+    assert [(f["kind"], f["text"]) for f in s.facts] == [
+        ("person", "Priya, Head of Ops"), ("number", "40 stores"), ("date", "Go live in March"),
+        ("tool", "Uses spreadsheets today")]
+    assert "Facts noted so far" in m._brief_block(s)
+    assert any(x.get("type") == "facts" for x in _drain(s))
+    assert cx.FACT_HINT_RE.search("we have 40 stores") and not cx.FACT_HINT_RE.search("sounds good to me")
+    assert cx.parse_facts("NONE") == [] and cx.parse_facts("FACT: MOOD | happy | Them") == []
+
+
+def test_pitch_versions_number_and_points(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db, coach_extras as cx
+    from backend.session_state import SessionState
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "pv.db"))
+    store = db.FirestoreClient()
+    monkeypatch.setattr(m, "_db", store)
+
+    async def fake_quick(prompt, **kw):
+        return "COVERED: 1, 3"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+
+    async def run():
+        await store.save_session("v1", {"user_id": "u1", "created_at": 10, "session_kind": "practice", "overall_score": 60,
+                                        "duration_seconds": 120, "pitch": {"name": "Billing Hub pitch", "version": 1, "points": []}})
+        s = SessionState(session_id="v2", user_id="u1")
+        m._apply_pitch(s, {"name": "  billing hub PITCH ", "points": ["Payments for 30 ventures", "Stripe and Razorpay", "Churn dashboard"]})
+        s.add_transcript("user", " ".join(["word"] * 30))
+        await m._score_pitch_version(s)
+        return s
+
+    s = asyncio.run(run())
+    assert s.pitch["version"] == 2 and s.pitch["name"] == "billing hub PITCH"
+    assert [p["covered"] for p in s.pitch["points"]] == [True, False, True]
+    groups = cx.group_pitch_versions([
+        {"session_id": "a", "created_at": 1, "pitch": {"name": "Billing Hub", "version": 1, "points": []}, "overall_score": 50},
+        {"session_id": "b", "created_at": 2, "pitch": {"name": "billing hub", "version": 2,
+                                                       "points": [{"text": "x", "covered": True}]}, "overall_score": 70},
+        {"session_id": "c", "created_at": 3},
+    ])
+    assert len(groups) == 1 and [v["version"] for v in groups[0]["versions"]] == [1, 2]
+    assert groups[0]["versions"][1]["points_hit"] == 1
+
+
+def test_roleplay_agent_and_kickoff():
+    import backend.main as m
+    from backend.agents.live_coach import make_live_coach_agent
+    from backend.session_state import SessionState
+
+    class FakeQueue:
+        def __init__(self):
+            self.sent = []
+
+        def send_content(self, content):
+            self.sent.append(content.parts[0].text)
+
+    s = SessionState(session_id="t-rp", coach_mode="pitch", roleplay_role="investor", persona="vc")
+    agent = make_live_coach_agent(s)
+    assert agent.name == "roleplay_partner" and agent.tools == []
+    assert "investor" in agent.instruction and "never give feedback" in agent.instruction
+    assert callable(s.flag_issue_fn)                                    # measurements still recorded
+    s.live_queue = FakeQueue()
+    m._apply_pitch(s, {"name": "Billing Hub", "points": ["30 ventures"]})
+    m._roleplay_kickoff(s)                                              # only once
+    assert len(s.live_queue.sent) == 1 and "Billing Hub" in s.live_queue.sent[0]
+
+    coach = SessionState(session_id="t-coach")
+    assert make_live_coach_agent(coach).name == "live_coach"
+
+
+def test_pitches_api(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import backend.main as m
+    from backend import db
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "pa.db"))
+    store = db.FirestoreClient()
+    monkeypatch.setattr(m, "_db", store)
+    asyncio.run(store.save_session("p1", {"user_id": "tester-a", "created_at": 5, "session_kind": "practice",
+                                          "pitch": {"name": "Chief OS", "version": 1, "points": []}, "roleplay_role": "client"}))
+    client = TestClient(m.app)
+    body = client.get("/api/pitches", headers={"x-user-id": "tester-a"}).json()
+    assert body["pitches"][0]["name"] == "Chief OS"
+    row = client.get("/api/sessions", headers={"x-user-id": "tester-a"}).json()["sessions"][0]
+    assert row["pitch_name"] == "Chief OS" and row["pitch_version"] == 1 and row["roleplay_role"] == "client"

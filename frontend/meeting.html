@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261021c" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261021c" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261021c" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261021e" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261021e" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261021e" />
 </head>
 <body class="mt-page">
 
@@ -150,6 +150,11 @@
         <ul id="mt-points-list" class="mt-points-list"></ul>
       </div>
 
+      <div id="mt-facts-panel" class="mt-points-panel mt-facts-panel hidden">
+        <div class="mt-label">Facts card <span id="mt-facts-count" class="mt-points-count"></span></div>
+        <ul id="mt-facts-list" class="mt-facts-list"></ul>
+      </div>
+
       <div id="mt-commit-panel" class="mt-points-panel mt-commit-panel hidden">
         <div class="mt-label">Commitments <span id="mt-commit-count" class="mt-points-count"></span></div>
         <ul id="mt-commit-list" class="mt-commit-list"></ul>
@@ -226,6 +231,7 @@
           </div>
           <div class="pm-points hidden"><span class="pm-points-label">To cover:</span> <span class="pm-points-left"></span></div>
           <div class="pm-commits hidden"><span class="pm-points-label">Promised:</span> <span class="pm-commits-text"></span></div>
+          <div class="pm-facts hidden"><span class="pm-points-label">Facts:</span> <span class="pm-facts-text"></span></div>
           <div class="pm-meters" aria-hidden="true">
             <span class="pm-meter-label">You</span><span class="pm-meter"><i class="pm-meter-you"></i></span>
             <span class="pm-meter-label">Them</span><span class="pm-meter"><i class="pm-meter-them"></i></span>
@@ -265,10 +271,10 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261021c"></script>
-  <script src="/static/audio-leveler.js?v=20261021c"></script>
-  <script src="/static/gaze.js?v=20261021c"></script>
-  <script src="/static/rehearse.js?v=20261021c"></script>
-  <script src="/static/meeting.js?v=20261021c"></script>
+  <script src="/static/tester.js?v=20261021e"></script>
+  <script src="/static/audio-leveler.js?v=20261021e"></script>
+  <script src="/static/gaze.js?v=20261021e"></script>
+  <script src="/static/rehearse.js?v=20261021e"></script>
+  <script src="/static/meeting.js?v=20261021e"></script>
 </body>
 </html>
