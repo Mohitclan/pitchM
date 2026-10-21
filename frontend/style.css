@@ -2111,3 +2111,4 @@ main {
 .goal-check.is-met { color: var(--success); background: rgba(22, 163, 74, 0.08); }
 .goal-check.is-miss { color: var(--warn); background: rgba(217, 119, 6, 0.08); }
 .goal-state.is-behind { color: var(--text-muted); }
+.rv-ignored { font-size: 11.5px; color: var(--text-muted); margin: -4px 0 6px; line-height: 1.45; }

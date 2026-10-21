@@ -1451,6 +1451,11 @@ async def websocket_endpoint(websocket: WebSocket):
         if stt is not None and (stt is state.user_stt or state.other_stt_task is not None)
     }
 
+    # Setup chatter ("start bolna start listen", asides in another language) isn't part of the talk.
+    ignored = state.trim_setup_chatter()
+    if ignored:
+        logger.info("setup_chatter_ignored session=%s %s", session_id, [r["text"][:60] for r in ignored])
+
     # ── Post-session analysis ─────────────────────────────────────
     try:
         await _run_post_session(websocket, state)
@@ -3438,7 +3443,7 @@ def _build_context_message(state: SessionState) -> str:
         "\"said\" is set.\n"
         f"LOOK-AWAYS MEASURED BY FACE TRACKING: {state.browser_gaze_streaks}\n\n"
         f"TIMELINE EVENTS (for replay):\n{state.timeline_json()}\n\n"
-        f"METRICS: fillers={state.scored_filler_count()} eye_drops={state.scored_eye_drops()} "
+        f"METRICS: fillers={state.scored_filler_count()} (incl. {state.transcript_stumble_count()} repeated words) eye_drops={state.scored_eye_drops()} "
         f"pace={state.pace_violations} contradictions={state.contradictions} "
         f"clarity={state.clarity_flags} slide_clarity={state.visual_flags} "
         f"slide_mismatch={state.mismatch_flags} duration={round(state.duration_seconds())}s\n"

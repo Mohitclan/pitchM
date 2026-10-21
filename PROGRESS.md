@@ -333,3 +333,18 @@ pitchlight.ai), the live coach's and report writer's self-name, review/feedback 
 Internal identifiers unchanged on purpose (see CLAUDE.md "Name"). Static files bumped to `?v=20261021b`.
 Not renamed: the product films in `video/` (narration and captures still say PitchMirror) and README/PLAN/docs
 from the hackathon.
+
+## Stumbles + setup chatter (after two live tests) — 2026-10-21
+
+From the first two live tests (practice 3.5 min, Teams meeting 2.5 min; both ran clean, report + rewrites + help OK):
+- **Repeated words count as stumbles.** `count_stumbles()` in `session_state.py` finds a word or phrase of up
+  to 6 words said twice in a row ("it it", "Chief OS Chief OS", "where you can see where you can see");
+  normal doubles (very very, bye bye, no no) and numbers are excluded. `scored_filler_count()` = fillers +
+  stumbles; the filler card shows "N detected (M repeated words)" and the report agents get the split.
+  On the real practice transcript: 0 fillers → 9 genuine repeats, no false positives.
+- **Setup chatter is not scored.** `trim_setup_chatter()` runs when the session ends, before analysis: within
+  the first/last 20 s of the presenter's speech it drops lines in the non-dominant script (Hindi asides in an
+  English pitch), trims such runs off the edge of a line, and drops short start/stop/test phrases
+  ("start bolna start listen"). Stops at the first real line on each side; mid-talk lines and the other side
+  are untouched. Removed text is saved as `ignored_chatter` and shown above the review transcript.
+- Live notch/meeting counters are unchanged (they still count only fillers while you speak).

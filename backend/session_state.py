@@ -32,6 +32,99 @@ _SCORING_FILLER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Stumbles: the same word or short phrase said twice in a row ("it it", "Chief OS Chief OS").
+# Words that are normally doubled are not stumbles.
+_STUMBLE_MAX_PHRASE = 6
+_STUMBLE_OK_DOUBLES = frozenset({
+    "very", "really", "so", "bye", "ha", "haha", "hey", "no", "yes", "yeah", "okay", "ok", "well",
+    "um", "uh", "erm", "hmm", "mm",   # fillers are counted separately
+})
+_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
+
+
+def count_stumbles(text: str) -> int:
+    """Repeated words/phrases in Latin-script speech; each extra copy counts once."""
+    words = _WORD_RE.findall((text or "").lower())
+    count, i = 0, 0
+    while i < len(words):
+        for n in range(min(_STUMBLE_MAX_PHRASE, (len(words) - i) // 2), 0, -1):
+            if words[i:i + n] == words[i + n:i + 2 * n] and not (n == 1 and words[i] in _STUMBLE_OK_DOUBLES):
+                count += 1
+                i += n          # a triple ("it it it") counts twice
+                break
+        else:
+            i += 1
+    return count
+
+
+# Setup chatter: what people say to the room while starting or stopping a session
+# ("start bolna start listen", "ok it's on", "हो गया … खत्म कर"). Only trimmed near the edges.
+CHATTER_EDGE_S = 20.0
+_CHATTER_RE = re.compile(
+    r"^(?:start|started|starting|stop|stopped|test|testing|listen|listening|recording|record|on|off|"
+    r"ok|okay|ready|done|go|begin|now|it|is|it's|its|this|working|can|you|hear|me|let's|lets|"
+    r"bolna|bol|chalo|chal|bas|ho|gaya|hogaya|khatam|khatm|shuru|kar|karo|haan|ha|acha|accha)$",
+    re.IGNORECASE,
+)
+_CHUNK_RE = re.compile(r"[A-Za-z0-9'’]+|[^\sA-Za-z0-9'’]+")
+
+
+def _chunk_script(chunk: str) -> str:
+    """'latin' | 'other' (a letter from another script) | 'neutral' (punctuation, digits)."""
+    if re.search(r"[A-Za-z]", chunk):
+        return "latin"
+    if any(ch.isalpha() for ch in chunk):
+        return "other"
+    return "neutral"
+
+
+def dominant_script(texts: list[str]) -> str | None:
+    """'latin' or 'other' when one script holds at least 60% of the letters, else None."""
+    latin = other = 0
+    for t in texts:
+        for ch in t:
+            if ch.isalpha():
+                if ch.isascii():
+                    latin += 1
+                else:
+                    other += 1
+    total = latin + other
+    if not total:
+        return None
+    if latin / total >= 0.6:
+        return "latin"
+    if other / total >= 0.6:
+        return "other"
+    return None
+
+
+def trim_edge_text(text: str, script: str | None) -> str:
+    """Drop leading/trailing runs written in the non-dominant script (asides around the pitch)."""
+    chunks = _CHUNK_RE.findall(text or "")
+    if not script or not chunks:
+        return (text or "").strip()
+    keep = [i for i, c in enumerate(chunks) if _chunk_script(c) == script]
+    if not keep:
+        return ""
+    start, end = keep[0], keep[-1]
+    # Re-join the kept span from the original text so spacing/punctuation stay as spoken.
+    first, last = chunks[start], chunks[end]
+    lo = (text or "").find(first)
+    hi = (text or "").rfind(last) + len(last)
+    span = (text or "")[lo:hi] if lo != -1 and hi > lo else " ".join(chunks[start:end + 1])
+    # A trailing sentence-ending mark right after the span belongs to it.
+    tail = (text or "")[hi:hi + 1]
+    return (span + (tail if tail in ".!?" else "")).strip()
+
+
+def is_setup_chatter(text: str) -> bool:
+    """Short line made mostly of start/stop/test words ("start bolna start listen", "ok it's on")."""
+    words = re.findall(r"[A-Za-z']+", text or "")
+    if not words or len(words) > 6:
+        return False
+    return sum(1 for w in words if _CHATTER_RE.match(w)) / len(words) >= 0.6
+
+
 # Sentinel value: putting this into ws_event_queue signals the drain task to exit.
 _DRAIN_STOP = None
 
@@ -159,6 +252,8 @@ class SessionState:
     talk_stats: dict = field(default_factory=dict)
     # Practice: weakest passages rewritten stronger [{original, rewrite, why, ts}]
     rewrites: list[dict] = field(default_factory=list)
+    # Setup chatter removed from the start/end of the presenter's transcript [{ts, text}]
+    ignored_chatter: list[dict] = field(default_factory=list)
     # Per-stream transcriber stats (segments, connects, rollovers, stalls, errors).
     transcription_health: dict = field(default_factory=dict)
     screen_enabled: bool = False
@@ -531,8 +626,56 @@ class SessionState:
         text = " ".join(seg["t"] for seg in self.transcript if seg.get("s") == "u")
         return sum(1 for _ in _SCORING_FILLER_RE.finditer(text))
 
+    def transcript_stumble_count(self) -> int:
+        """Repeated words/phrases ("it it", "on on") in what the presenter said."""
+        return sum(count_stumbles(seg["t"]) for seg in self.transcript if seg.get("s") == "u")
+
     def scored_filler_count(self) -> int:
-        return max(self.filler_count, self.transcript_filler_count())
+        """Fillers plus stumbles: both are verbal clutter the listener hears."""
+        return max(self.filler_count, self.transcript_filler_count() + self.transcript_stumble_count())
+
+    def trim_setup_chatter(self) -> list[dict]:
+        """
+        Remove what the presenter said to the room while starting/stopping (first and last
+        CHATTER_EDGE_S of their speech): lines in a different script from the rest of the
+        talk, and short start/stop/test phrases. Stops at the first real line on each side.
+        Returns (and remembers) what was removed.
+        """
+        user = [seg for seg in self.transcript if seg.get("s") == "u" and (seg.get("t") or "").strip()]
+        if len(user) < 3:
+            return []
+        script = dominant_script([seg["t"] for seg in user])
+        first_ts = user[0]["ts"]
+        last_te = max(seg.get("te", seg["ts"]) for seg in user)
+        removed: list[dict] = []
+        drop_ids: set[int] = set()
+
+        def clean(seg: dict) -> bool:
+            """True = segment still has real content (stop scanning this edge)."""
+            original = seg["t"]
+            trimmed = trim_edge_text(original, script)
+            if not trimmed or is_setup_chatter(trimmed):
+                drop_ids.add(id(seg))
+                removed.append({"ts": seg["ts"], "text": original.strip()})
+                return False
+            if trimmed != original.strip():
+                removed.append({"ts": seg["ts"], "text": original.replace(trimmed, " … ").strip(" …") or original})
+                seg["t"] = trimmed
+            return True
+
+        for seg in user:                                   # leading edge
+            if seg["ts"] > first_ts + CHATTER_EDGE_S or clean(seg):
+                break
+        for seg in reversed(user):                         # trailing edge
+            if id(seg) in drop_ids:
+                continue
+            if seg.get("te", seg["ts"]) < last_te - CHATTER_EDGE_S or clean(seg):
+                break
+        if drop_ids:
+            self.transcript = [seg for seg in self.transcript if id(seg) not in drop_ids]
+        removed.sort(key=lambda r: r["ts"])
+        self.ignored_chatter = removed
+        return removed
 
     def scored_eye_drops(self) -> int:
         return max(self.eye_contact_drops, self.gaze_away_streaks, self.browser_gaze_streaks)

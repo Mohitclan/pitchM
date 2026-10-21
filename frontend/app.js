@@ -2480,6 +2480,8 @@ function renderReviewSection(data, reportBodyHtml, modeLabel) {
           Transcript <span class="report-badge">${words} words</span>
           <button type="button" class="asset-download review-download" onclick="downloadSessionReview()">Download .txt</button>
         </div>
+        ${(data.ignored_chatter || []).length ? `<div class="rv-ignored" title="Said while starting or stopping — not scored">
+          Not scored (setup chatter): ${data.ignored_chatter.map((c) => `“${escapeHtml(c.text)}”`).join(' · ')}</div>` : ''}
         <div id="rv-transcript-body" class="sc-transcript-body review-body">${transcriptHtml}</div>
       </div>
       <div class="review-col">
@@ -2540,7 +2542,7 @@ function renderScorecard(data) {
       prosody: 'Prosody',
     }[key] || key;
     const catStars = scoreToStars(cat.score);
-    const detail = cat.count !== undefined ? `${cat.count} detected` :
+    const detail = cat.count !== undefined ? `${cat.count} detected${cat.stumbles ? ` (${cat.stumbles} repeated word${cat.stumbles === 1 ? '' : 's'})` : ''}` :
                    cat.drops !== undefined ? `${cat.drops} drops` :
                    cat.violations !== undefined ? `${cat.violations} flags` :
                    cat.monotony_score !== undefined

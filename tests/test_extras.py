@@ -203,3 +203,38 @@ def test_extras_api(tmp_path, monkeypatch):
 
     assert client.post("/api/sessions/m-1/export", headers=h).status_code == 404   # no webhook configured
     assert client.get("/api/config").json()["export_webhook"] is False
+
+
+def test_stumbles_count_repeats_not_normal_doubles():
+    from backend.session_state import count_stumbles
+    assert count_stumbles("It it is integrated. on on HRMS. Chief OS Chief OS is our system.") == 3
+    assert count_stumbles("where you can see where you can see all the payments") == 1
+    assert count_stumbles("it it it works") == 2                        # a triple is two extra copies
+    assert count_stumbles("very very good, bye bye, no no") == 0          # normal doubles
+    assert count_stumbles("We grew from 2 to 2 stores") == 0              # numbers aren't words here
+    assert count_stumbles("That, that is the point") == 1                 # punctuation doesn't hide it
+
+
+def test_setup_chatter_trimmed_at_edges_only():
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-chatter", session_kind="meeting")
+    s.transcript = [
+        {"s": "u", "t": "start bolna start listen", "ts": 3.2, "te": 3.2},
+        {"s": "u", "t": "क्या बोलूं? पिच कर दे।Hello, so we are going to the billing hub today.", "ts": 14.1, "te": 14.1},
+        {"s": "o", "t": "Okay, go ahead.", "ts": 20.0, "te": 20.0},
+        {"s": "u", "t": "Billing Hub is a centralized platform for payments across thirty ventures.", "ts": 30.0, "te": 40.0},
+        {"s": "u", "t": "खत्म नहीं हुए।", "ts": 60.0, "te": 60.0},                       # mid-talk: kept
+        {"s": "u", "t": "It also has a dashboard for every payment and churn.", "ts": 80.0, "te": 95.0},
+        {"s": "u", "t": "हो गया हो गया खत्म कर।", "ts": 100.0, "te": 100.0},
+    ]
+    removed = s.trim_setup_chatter()
+    texts = [seg["t"] for seg in s.transcript if seg["s"] == "u"]
+    assert texts[0] == "Hello, so we are going to the billing hub today."
+    assert "खत्म नहीं हुए।" in texts and texts[-1].startswith("It also has a dashboard")
+    assert [r["ts"] for r in removed] == [3.2, 14.1, 100.0]
+    assert [seg["t"] for seg in s.transcript if seg["s"] == "o"] == ["Okay, go ahead."]   # the other side untouched
+
+    plain = SessionState(session_id="t-clean")
+    plain.transcript = [{"s": "u", "t": f"Real sentence number {i} about the product.", "ts": i * 10.0, "te": i * 10.0}
+                        for i in range(5)]
+    assert plain.trim_setup_chatter() == [] and len(plain.transcript) == 5

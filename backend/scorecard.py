@@ -145,6 +145,7 @@ def build_scorecard(state: "SessionState") -> dict:
             "filler_words": {
                 "score": filler_score,
                 "count": _filler_count(state),
+                "stumbles": _call(state, "transcript_stumble_count"),
                 "label": _grade(filler_score),
             },
             "eye_contact": {
@@ -219,6 +220,7 @@ def _session_extras(state) -> dict:
         "commitments": getattr(state, "commitments", []),
         "talk_stats": getattr(state, "talk_stats", {}),
         "rewrites": getattr(state, "rewrites", []),
+        "ignored_chatter": getattr(state, "ignored_chatter", []),
         "brief": {
             "notes": getattr(state, "brief_notes", ""),
             "points": getattr(state, "brief_points", []),
@@ -226,6 +228,11 @@ def _session_extras(state) -> dict:
         },
         "recap": getattr(state, "recap", {}),
     }
+
+
+def _call(state, name: str, default: int = 0) -> int:
+    fn = getattr(state, name, None)
+    return fn() if callable(fn) else default
 
 
 def _filler_count(state) -> int:
