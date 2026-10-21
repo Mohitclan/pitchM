@@ -38,6 +38,9 @@ PitchMirror is an **AI speaking coach**. It listens while you talk, gives short 
    `frontend/rehearse.js`.
    Later the same day: live **facts card** (meeting), **pitch versions** with comparison, local **video replay**
    (IndexedDB, never uploaded) and an **AI role-play partner** (`?roleplay=investor|interviewer|client`) in practice.
+   Then **live advice**: meeting "How chatty?" (`?chatty=quiet|balanced|active`) with next-move / missed-question /
+   positive notes, objection cards from prepared answers, a question coach and a next-step guard; practice side
+   panel with live stats, key-point checklist, advice cards and "Say it better" (`?feedback=live|end`).
 
 Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary, History (header link). A tester picker ("Who's testing?") separates users in one browser.
 
@@ -59,8 +62,8 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
 
 ### WebSocket protocol (`/ws?kind=practice|meeting&…`)
 - **Binary frames, first byte:** `0x01` mic PCM, `0x02` video, `0x03` stop, `0x04` screen, `0x05` slide, `0x06` meeting (other) audio, `0x10` coach audio (server→client).
-- **Client JSON:** `brief` (now with `client`), `help`, `nudge_feedback`, `interruption`, `gaze`, `talk_time`, `pitch` (practice).
-- **Server JSON:** `status`, `transcript`, `transcript_end`, `coach_tip`, `coach_cue`, `coach_said`, `answer_hint`, `help_reply`, `client_mood`, `stt_status`, `brief_points`, `brief_reminder`, `commitments`, `previous_call`, `facts`, `pipeline_step`, `scorecard`.
+- **Client JSON:** `brief` (now with `client`), `help`, `nudge_feedback`, `interruption`, `gaze`, `talk_time`, `pitch` and `say_better` (practice).
+- **Server JSON:** `status`, `transcript`, `transcript_end`, `coach_tip`, `coach_cue`, `coach_said`, `answer_hint`, `help_reply`, `client_mood`, `stt_status`, `brief_points`, `brief_reminder`, `commitments`, `previous_call`, `facts`, `advice`, `objection_card`, `questions`, `live_stats`, `pitch_points`, `say_better`, `pipeline_step`, `scorecard`.
 
 ## Configuration (`.env`, gitignored — never print or commit values)
 - `GOOGLE_API_KEY`: a free key.
@@ -78,7 +81,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   ```
 
   Open Docker Desktop first with `open -a Docker` if needed. macOS has no `timeout` command.
-- **Tests:** `.venv/bin/python -m pytest tests/ -q` (84 tests). Live-model smoke test: `scripts/smoke_test.py`.
+- **Tests:** `.venv/bin/python -m pytest tests/ -q` (88 tests). Live-model smoke test: `scripts/smoke_test.py`.
 - **Chrome** with headphones is needed for the full experience.
 
 ## Where things stand (2026-10-21)

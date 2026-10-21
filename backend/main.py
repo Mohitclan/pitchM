@@ -1322,6 +1322,9 @@ async def websocket_endpoint(websocket: WebSocket):
     session_kind = "meeting" if (websocket.query_params.get("kind") or "").lower() == "meeting" else "practice"
     raw_platform = (websocket.query_params.get("platform") or "").strip().lower()
     platform = raw_platform if raw_platform in _VALID_PLATFORMS else ("other" if session_kind == "meeting" else "")
+    raw_chatty = (websocket.query_params.get("chatty") or "").strip().lower()
+    chattiness = raw_chatty if raw_chatty in coach_extras.CHATTINESS else "balanced"
+    live_feedback = (websocket.query_params.get("feedback") or "live").strip().lower() != "end"
     raw_role = (websocket.query_params.get("roleplay") or "").strip().lower()
     roleplay_role = raw_role if session_kind == "practice" and raw_role in coach_extras.ROLEPLAY_ROLES else ""
     if session_kind == "meeting":
@@ -1353,6 +1356,8 @@ async def websocket_endpoint(websocket: WebSocket):
         total_slides=total_slides,
         current_slide_index=0,
         roleplay_role=roleplay_role,
+        chattiness=chattiness,
+        live_feedback=live_feedback or session_kind == "meeting",
     )
     state.record_timeline(
         "session",
@@ -1435,6 +1440,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     tg.create_task(_practice_voice_followup(state, live_request_queue), name="voice_followup")
                     if state.roleplay_role:
                         tg.create_task(_roleplay_kickoff_fallback(state), name="roleplay_kickoff")
+                    tg.create_task(_practice_live_coach(state), name="practice_live_coach")
                 # The client-audio transcriber starts lazily, on the first meeting-audio frame
                 # (see _upstream) — no idle session when nothing is shared.
                 if state.user_stt is not None:
@@ -1512,6 +1518,20 @@ def _stt_callback(state: SessionState, speaker: str):
             _request_answer_hint(state, text)
         if state.session_kind == "meeting" and coach_extras.looks_like_commitment(text):
             _track_commitment(state, speaker, text)
+        if state.session_kind == "meeting" and speaker == "user":
+            asked = coach_extras.count_open_questions(text)
+            if asked:
+                state.open_questions += asked
+                state.last_open_question_ts = state.duration_seconds()
+                state._enqueue({"type": "questions", "count": state.open_questions})
+        if (state.session_kind == "meeting" and speaker == "other" and state.chattiness != "quiet"
+                and coach_extras.OBJECTION_RE.search(text)
+                and time.monotonic() - state.last_objection_at >= coach_extras.OBJECTION_GAP_S):
+            state.last_objection_at = time.monotonic()
+            try:
+                asyncio.get_running_loop().create_task(_run_objection_card(state, text))
+            except RuntimeError:
+                pass
     return on_text
 
 
@@ -1785,6 +1805,7 @@ def _apply_brief(state: SessionState, payload: dict) -> None:
             asyncio.get_running_loop().create_task(_load_previous_call(state))
         except RuntimeError:
             pass
+    state.prepared_answers = coach_extras.parse_prepared_answers(str(payload.get("objections") or "")[:4000])
     state.brief_notes = str(payload.get("notes") or "")[: meeting_brief.MAX_NOTES_CHARS].strip()
     try:
         state.planned_minutes = max(0, min(240, int(payload.get("planned_minutes") or 0)))
@@ -2169,6 +2190,141 @@ async def _run_facts_check(state: SessionState) -> None:
         logger.info("facts session=%s added=%s", state.session_id, [f["text"] for f in added])
 
 
+def _send_advice(state: SessionState, kind: str, text: str, **extra) -> bool:
+    """Show one piece of live advice (meeting notch / practice side panel), if it isn't noise."""
+    now = time.monotonic()
+    recent = [a["text"] for a in state.live_advice]
+    if not text or coach_extras.is_repeat_advice(text, recent):
+        return False
+    if kind not in ("missed", "objection") and now - state.last_advice_at < coach_extras.ADVICE_GAP_S:
+        return False
+    if kind == "good":
+        if now - state.last_good_at < coach_extras.POSITIVE_GAP_S:
+            return False
+        state.last_good_at = now
+    state.last_advice_at = now
+    row = {"ts": round(state.duration_seconds(), 1), "kind": kind, "text": text, **extra}
+    state.live_advice.append(row)
+    state.record_timeline("advice", f"{kind}: {text}"[:220])
+    state._enqueue({"type": "advice", **row})
+    logger.info("live_advice session=%s kind=%s text=%r", state.session_id, kind, text)
+    return True
+
+
+async def _run_meeting_advice(state: SessionState) -> None:
+    """Next move / missed question / (rarely) a positive note, from the last two minutes."""
+    state.advice_pending = True
+    try:
+        allow_good = time.monotonic() - state.last_good_at >= coach_extras.POSITIVE_GAP_S
+        reply = await _quick_text(coach_extras.meeting_advice_prompt(
+            state.coach_mode, state.conversation_tail(seconds=120, max_chars=2400), _brief_block(state, max_chars=800),
+            [a["text"] for a in state.live_advice], allow_good,
+        ), max_tokens=60)
+        parsed = coach_extras.parse_advice(reply)
+        if parsed and parsed[0] in ("next", "missed", "good"):
+            _send_advice(state, *parsed)
+    finally:
+        state.advice_pending = False
+
+
+async def _run_objection_card(state: SessionState, quote: str) -> None:
+    """Them pushed back: show the prepared answer (if any) and a 3-step way to respond."""
+    reply = await _quick_text(coach_extras.objection_prompt(
+        quote, state.conversation_tail(seconds=90, max_chars=1500), state.prepared_answers, _brief_block(state, max_chars=600),
+    ), max_tokens=160)
+    card = coach_extras.parse_objection(reply, state.prepared_answers)
+    if not card:
+        return
+    card = {"ts": round(state.duration_seconds(), 1), "quote": quote[:200], **card}
+    state.objections.append(card)
+    state.record_timeline("objection", f"{card['kind']}: {card['concern']}"[:220])
+    state.last_advice_at = time.monotonic()
+    state._enqueue({"type": "objection_card", **card})
+    logger.info("objection_card session=%s kind=%s prepared=%s", state.session_id, card["kind"], bool(card["prepared"]))
+
+
+async def _run_next_step_check(state: SessionState) -> None:
+    reply = await _quick_text(coach_extras.next_step_prompt(
+        state.conversation_tail(seconds=10 ** 6, max_chars=6000)), max_tokens=5)
+    if reply.strip().upper().startswith("NO"):
+        _send_advice(state, "next", "No next step yet — propose a follow-up with a date.")
+
+
+async def _run_practice_advice(state: SessionState) -> None:
+    state.advice_pending = True
+    try:
+        rows = meeting_brief.new_point_rows(state.pitch_points)
+        covered = {p["text"] for p in state.brief_points if p.get("covered")}
+        for r in rows:
+            r["covered"] = r["text"] in covered
+        user_tail = "\n".join(seg["t"] for seg in state.transcript
+                              if seg.get("s") == "u" and seg.get("te", seg["ts"]) >= state.duration_seconds() - 75)
+        reply = await _quick_text(coach_extras.practice_advice_prompt(
+            state.coach_mode, user_tail[-2000:], rows, [a["text"] for a in state.live_advice]), max_tokens=50)
+        parsed = coach_extras.parse_advice(reply)
+        if parsed and parsed[0] in ("tip", "good"):
+            _send_advice(state, *parsed)
+    finally:
+        state.advice_pending = False
+
+
+async def _run_say_better(state: SessionState) -> None:
+    last = " ".join(seg["t"] for seg in [s for s in state.transcript if s.get("s") == "u"][-2:]).strip()
+    if len(last.split()) < 5:
+        state._enqueue({"type": "say_better", "error": "Say a sentence or two first."})
+        return
+    last = " ".join(last.split()[-70:])
+    rewrite = coach_extras.parse_say_better(await _quick_text(coach_extras.say_better_prompt(state.coach_mode, last),
+                                                              max_tokens=200, timeout=15.0))
+    if not rewrite:
+        state._enqueue({"type": "say_better", "error": "Couldn't rewrite that right now — try again."})
+        return
+    state.record_timeline("say_better", rewrite[:220])
+    state._enqueue({"type": "say_better", "original": last, "rewrite": rewrite})
+
+
+async def _practice_coverage(state: SessionState) -> None:
+    before = sum(p["covered"] for p in state.brief_points)
+    await _run_coverage_check(state)
+    if sum(p["covered"] for p in state.brief_points) != before:
+        state._enqueue({"type": "pitch_points", "points": state.brief_points})
+
+
+async def _practice_live_coach(state: SessionState) -> None:
+    """
+    Practice side panel, live: speaking stats every 3 s; key points ticked off as they're said;
+    and a content advice card about every 20 s of new speech (structure, clarity, evidence, praise).
+    """
+    last_cov_at = last_adv_at = time.monotonic()
+    words_at_cov = words_at_adv = 0
+    if state.pitch_points and not state.brief_points:
+        state.brief_points = meeting_brief.new_point_rows(state.pitch_points)
+    while not state.live_closed and state.is_active:
+        await asyncio.sleep(3.0)
+        if state.live_closed:
+            break
+        m = state.recent_speech_metrics()
+        state._enqueue({
+            "type": "live_stats", "wpm": round(m["wpm"]), "fillers": state.transcript_filler_count(),
+            "repeats": state.transcript_stumble_count(), "eye_drops": state.scored_eye_drops(),
+            "gaze": state.browser_gaze, "elapsed": round(state.duration_seconds()),
+        })
+        if not state.live_feedback:
+            continue
+        if state.pitch_points and not state.brief_points:
+            state.brief_points = meeting_brief.new_point_rows(state.pitch_points)
+            state._enqueue({"type": "pitch_points", "points": state.brief_points})
+        words = state.user_word_count()
+        now = time.monotonic()
+        if state.brief_points and now - last_cov_at >= 20.0 and words - words_at_cov >= 12:
+            last_cov_at, words_at_cov = now, words
+            asyncio.get_running_loop().create_task(_practice_coverage(state))
+        if (not state.advice_pending and now - last_adv_at >= coach_extras.PRACTICE_ADVICE_EVERY_S
+                and words - words_at_adv >= coach_extras.PRACTICE_ADVICE_MIN_NEW_WORDS):
+            last_adv_at, words_at_adv = now, words
+            asyncio.get_running_loop().create_task(_run_practice_advice(state))
+
+
 async def _previous_call_for(user_id: str, client: str, *, exclude: str = "") -> dict:
     """Most recent saved meeting this user had with `client` (case-insensitive)."""
     key = coach_extras.client_key(client)
@@ -2261,6 +2417,8 @@ def _brief_block(state: SessionState, *, max_chars: int = 1200) -> str:
         parts.append("Commitments made so far:\n" + coach_extras.commitments_text(state.commitments))
     if state.facts:
         parts.append("Facts noted so far:\n" + coach_extras.facts_text(state.facts))
+    if state.prepared_answers:
+        parts.append("Presenter's prepared answers: " + "; ".join(f"{p['label']}: {p['answer']}" for p in state.prepared_answers))
     return "\n".join(parts)
 
 
@@ -2332,7 +2490,8 @@ async def _practice_voice_followup(state: SessionState, live_request_queue: Live
         # voicing a requested cue — so the browser speaks it (speak=True) with its own voice.
         # Role-play: the partner stays in character, so the cue is shown silently.
         state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue,
-                        "speak": not state.roleplay_role, "silent": bool(state.roleplay_role)})
+                        "speak": not state.roleplay_role and state.live_feedback,
+                        "silent": bool(state.roleplay_role) or not state.live_feedback})
         logger.info("voice_followup session=%s issue=%s cue=%r", state.session_id, issue_type, cue)
 
 
@@ -2354,11 +2513,34 @@ async def _meeting_nudge_watcher(state: SessionState, live_request_queue: LiveRe
     them_words_at_last_mood = 0
     last_facts_at = time.monotonic()
     facts_since_ts = 0.0
+    last_advice_check = time.monotonic()
+    words_at_advice = 0
     while not state.live_closed and state.is_active:
         await asyncio.sleep(3.0)
         if state.live_closed or not callable(state.flag_issue_fn):
             continue
         _maybe_brief_reminder(state)
+        # Live advice (next move / missed question / positives), question coach and next-step guard.
+        if state.chattiness != "quiet":
+            every = coach_extras.ADVICE_EVERY_S.get(state.chattiness, 30.0)
+            convo_words = sum(len(seg["t"].split()) for seg in state.transcript if seg.get("s") in ("u", "o"))
+            if (not state.advice_pending and time.monotonic() - last_advice_check >= every
+                    and convo_words - words_at_advice >= coach_extras.ADVICE_MIN_NEW_WORDS):
+                last_advice_check, words_at_advice = time.monotonic(), convo_words
+                asyncio.get_running_loop().create_task(_run_meeting_advice(state))
+            now_rel = state.duration_seconds()
+            if (state.coach_mode in coach_extras.QUESTION_COACH_MODES
+                    and now_rel >= coach_extras.QUESTION_COACH_AFTER_S
+                    and now_rel - max(state.last_open_question_ts, state.question_nudged_at) >= coach_extras.QUESTION_COACH_AFTER_S
+                    and state.user_word_count() >= 60):
+                state.question_nudged_at = now_rel
+                _send_advice(state, "next", "Ask an open question — what, how or why.")
+            minutes = state.planned_minutes or 0
+            due = (minutes and now_rel >= minutes * 60 - 300) or (not minutes and now_rel >= 20 * 60)
+            if (state.coach_mode in coach_extras.NEXT_STEP_MODES and due and not state.next_step_checked
+                    and state.other_audio_seen):
+                state.next_step_checked = True
+                asyncio.get_running_loop().create_task(_run_next_step_check(state))
         if time.monotonic() - last_facts_at >= coach_extras.FACTS_CHECK_EVERY_S:
             new_lines = [seg["t"] for seg in state.transcript
                          if seg.get("s") in ("u", "o") and seg.get("te", seg["ts"]) > facts_since_ts]
@@ -2451,7 +2633,7 @@ def _handle_confirmed_lookaway(
         "sensor": "browser_face_tracking",
     }
     result = state.flag_issue_fn("eye_contact", description, evidence) if callable(state.flag_issue_fn) else {}
-    if result.get("recorded") and (state.session_kind == "meeting" or state.roleplay_role):
+    if result.get("recorded") and (state.session_kind == "meeting" or state.roleplay_role or not state.live_feedback):
         # In a real call the cue is shown silently in the bubble; no model turn needed.
         state._enqueue({"type": "coach_cue", "index": len(state.events) - 1, "text": cue})
         logger.info("lookaway_cue session=%s cue=%r (meeting, silent)", state.session_id, cue)
@@ -2610,6 +2792,8 @@ async def _upstream(
                         _record_talk_time(state, payload_json)
                     if msg_type == "pitch" and state.session_kind == "practice":
                         _apply_pitch(state, payload_json)
+                    if msg_type == "say_better" and state.session_kind == "practice":
+                        asyncio.get_running_loop().create_task(_run_say_better(state))
                         continue
                     if msg_type == "gaze":
                         confirmed = state.update_browser_gaze(str(payload_json.get("state") or ""))
@@ -2884,7 +3068,11 @@ async def _downstream(
                                 state.last_confirmed_issue_time > 0
                                 and issue_age <= CONFIRMED_ISSUE_WINDOW_S
                             )
-                            if state.roleplay_role or (elapsed >= COACH_SPEECH_COOLDOWN_S and has_recent_confirmed_issue):
+                            if not state.roleplay_role and not state.live_feedback:
+                                _suppress_turn = True      # practice set to "feedback only at the end"
+                                _turn_committed = True
+                                _start_reply("suppressed", "feedback_at_end")
+                            elif state.roleplay_role or (elapsed >= COACH_SPEECH_COOLDOWN_S and has_recent_confirmed_issue):
                                 _suppress_turn = False
                                 _turn_committed = True
                                 state.last_coach_speech_time = now

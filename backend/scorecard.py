@@ -224,6 +224,10 @@ def _session_extras(state) -> dict:
         "facts": getattr(state, "facts", []),
         "pitch": getattr(state, "pitch", {}),
         "roleplay_role": getattr(state, "roleplay_role", ""),
+        "live_advice": getattr(state, "live_advice", []),
+        "objections": getattr(state, "objections", []),
+        "open_questions": getattr(state, "open_questions", 0),
+        "chattiness": getattr(state, "chattiness", "balanced"),
         "brief": {
             "notes": getattr(state, "brief_notes", ""),
             "points": getattr(state, "brief_points", []),

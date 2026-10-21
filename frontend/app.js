@@ -69,6 +69,7 @@ function buildWsUrl(sessionCfg = {}) {
   if (sessionCfg.screenEnabled) url.searchParams.set('screen', '1');
   if (sessionCfg.demoMode) url.searchParams.set('demo', '1');
   if (sessionCfg.roleplay) url.searchParams.set('roleplay', sessionCfg.roleplay);
+  if (sessionCfg.liveFeedback === false) url.searchParams.set('feedback', 'end');
   return url.toString();
 }
 
@@ -197,6 +198,7 @@ const practicePartnerSelect = document.getElementById('practice-partner');
 const pitchNameInput = document.getElementById('pitch-name');
 const pitchPointsInput = document.getElementById('pitch-points');
 const recordVideoToggle = document.getElementById('record-video-toggle');
+const feedbackModeSelect = document.getElementById('feedback-mode');
 const PRACTICE_EXTRAS_KEY = 'pitchmirror_practice_extras';
 const ROLEPLAY_LABELS = { investor: 'Investor', interviewer: 'Interviewer', client: 'Client' };
 try {
@@ -205,6 +207,7 @@ try {
   if (pitchNameInput && saved.pitch) pitchNameInput.value = saved.pitch;
   if (pitchPointsInput && saved.points) pitchPointsInput.value = saved.points;
   if (recordVideoToggle && typeof saved.record === 'boolean') recordVideoToggle.checked = saved.record;
+  if (feedbackModeSelect && saved.feedback) feedbackModeSelect.value = saved.feedback;
 } catch (_) { /* first visit */ }
 
 function savePracticeExtras() {
@@ -214,13 +217,14 @@ function savePracticeExtras() {
       pitch: (pitchNameInput?.value || '').trim(),
       points: pitchPointsInput?.value || '',
       record: !!recordVideoToggle?.checked,
+      feedback: feedbackModeSelect?.value || 'live',
     }));
   } catch (_) { /* storage blocked */ }
 }
 
 let _sessionRoleplay = '';
 
-const _practiceInputs = [practicePartnerSelect, pitchNameInput, pitchPointsInput, recordVideoToggle];
+const _practiceInputs = [practicePartnerSelect, pitchNameInput, pitchPointsInput, recordVideoToggle, feedbackModeSelect];
 function setPracticeInputsDisabled(disabled) {
   _practiceInputs.forEach((el) => { if (el) el.disabled = disabled; });
 }
@@ -556,6 +560,7 @@ async function startSession() {
     pitchName: (pitchNameInput?.value || '').trim(),
     pitchPoints: (pitchPointsInput?.value || '').split('\n').map((x) => x.trim()).filter(Boolean),
     recordVideo: !!recordVideoToggle?.checked,
+    liveFeedback: (feedbackModeSelect?.value || 'live') !== 'end',
   };
   savePracticeExtras();
   _sessionRoleplay = sessionCfg.roleplay;
@@ -661,6 +666,7 @@ async function startSession() {
   recIndicator.classList.remove('hidden');
   transcriptFeed.innerHTML = '';
   resetSuggestions();
+  startLiveCoachPanel(sessionCfg);
   if (transcriptWordCountEl) transcriptWordCountEl.textContent = '0 words';
   historyPanel?.classList.add('hidden');
   _activeLine = { speaker: null, el: null };
@@ -1041,6 +1047,22 @@ function handleServerMessage(event) {
 
     case 'coach_tip':
       addSuggestionCard(msg);
+      break;
+
+    case 'live_stats':
+      updateLiveStats(msg);
+      break;
+
+    case 'pitch_points':
+      renderLivePoints(msg.points);
+      break;
+
+    case 'advice':
+      addAdviceCard(msg);
+      break;
+
+    case 'say_better':
+      showSayBetter(msg);
       break;
 
     case 'coach_cue':
@@ -1430,6 +1452,7 @@ function _prependToSuggestions(el) {
 }
 
 function addSuggestionCard(msg) {
+  if (!_liveFeedback) return;            // "feedback only at the end": the review has it
   const index = Number(msg.index);
   const card = document.createElement('div');
   card.className = `suggestion-card type-${msg.issue_type || 'issue'}`;
@@ -2932,6 +2955,88 @@ async function openPastSession(sessionId) {
     }
   }
 }
+
+/* ── Live coach panel (practice): stats, key-point checklist, advice cards, say it better ── */
+let _liveFeedback = true;
+const _lcEl = (id) => document.getElementById(id);
+
+function startLiveCoachPanel(cfg) {
+  _liveFeedback = cfg.liveFeedback !== false;
+  const panel = _lcEl('live-coach');
+  if (!panel) return;
+  panel.classList.toggle('hidden', !_liveFeedback);
+  _lcEl('lc-better')?.classList.add('hidden');
+  ['lc-wpm', 'lc-eye'].forEach((id) => { if (_lcEl(id)) _lcEl(id).textContent = '–'; });
+  ['lc-fillers', 'lc-repeats'].forEach((id) => { if (_lcEl(id)) _lcEl(id).textContent = '0'; });
+  renderLivePoints((cfg.pitchPoints || []).map((text) => ({ text, covered: false })));
+  if (!_liveFeedback) {
+    const feed = document.getElementById('suggestions-feed');
+    if (feed) feed.innerHTML = '<div class="suggestions-empty">Live feedback is off for this run — everything appears in the review when you finish.</div>';
+  }
+}
+
+const GAZE_SHORT = { camera: 'eyes ✓', away: 'looking away', notes: 'looking down', no_face: 'out of frame' };
+
+function updateLiveStats(msg) {
+  if (!_liveFeedback) return;
+  const set = (id, v) => { const el = _lcEl(id); if (el) el.textContent = v; };
+  set('lc-wpm', msg.wpm ? String(msg.wpm) : '–');
+  set('lc-fillers', String(msg.fillers ?? 0));
+  set('lc-repeats', String(msg.repeats ?? 0));
+  set('lc-eye', GAZE_SHORT[msg.gaze] || '–');
+  set('lc-time', formatTime(Number(msg.elapsed) || 0));
+  _lcEl('lc-wpm')?.closest('.lc-stat')?.classList.toggle('warn', Number(msg.wpm) > 180);
+  _lcEl('lc-eye')?.closest('.lc-stat')?.classList.toggle('warn', !!msg.gaze && msg.gaze !== 'camera');
+}
+
+function renderLivePoints(points) {
+  const box = _lcEl('lc-points');
+  const list = _lcEl('lc-points-list');
+  if (!box || !list) return;
+  const rows = Array.isArray(points) ? points : [];
+  box.classList.toggle('hidden', !rows.length);
+  const done = rows.filter((p) => p.covered).length;
+  if (_lcEl('lc-points-count')) _lcEl('lc-points-count').textContent = rows.length ? `${done}/${rows.length}` : '';
+  list.innerHTML = rows.map((p) => `<li class="${p.covered ? 'done' : ''}">${p.covered ? '✓' : '○'} ${escapeHtml(p.text)}</li>`).join('');
+}
+
+const ADVICE_LABELS = { tip: 'Coach tip', good: 'Nice', next: 'Next move', missed: 'Missed question' };
+
+function addAdviceCard(msg) {
+  if (!_liveFeedback) return;
+  const card = document.createElement('div');
+  card.className = `suggestion-card advice-card advice-${msg.kind === 'good' ? 'good' : 'tip'}`;
+  card.innerHTML = `
+    <div class="sg-head">
+      <span class="sg-time">${escapeHtml(formatTime(Number(msg.ts) || 0))}</span>
+      <span class="sg-type">${msg.kind === 'good' ? '✓ ' : '💡 '}${escapeHtml(ADVICE_LABELS[msg.kind] || 'Coach tip')}</span>
+    </div>
+    <div class="sg-desc advice-text">${escapeHtml(msg.text)}</div>`;
+  _prependToSuggestions(card);
+}
+
+function requestSayBetter() {
+  if (!sessionActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const btn = _lcEl('btn-say-better');
+  if (btn) { btn.disabled = true; btn.textContent = '✨ Rewriting…'; }
+  ws.send(JSON.stringify({ type: 'say_better' }));
+  setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = '✨ Say it better'; } }, 8000);
+}
+
+function showSayBetter(msg) {
+  const box = _lcEl('lc-better');
+  const btn = _lcEl('btn-say-better');
+  if (btn) { btn.disabled = false; btn.textContent = '✨ Say it better'; }
+  if (!box) return;
+  box.classList.remove('hidden');
+  if (msg.error) { box.innerHTML = `<div class="lc-better-err">${escapeHtml(msg.error)}</div>`; return; }
+  box.innerHTML = `
+    <div class="lc-title">Say it like this <button type="button" class="lc-close" aria-label="Close" onclick="this.closest('.lc-better').classList.add('hidden')">×</button></div>
+    <div class="lc-better-new">${escapeHtml(msg.rewrite)}</div>
+    <div class="lc-better-old">You said: ${escapeHtml(msg.original)}</div>`;
+}
+
+_lcEl('btn-say-better')?.addEventListener('click', requestSayBetter);
 
 /* ── Video replay (recorded and kept in this browser only) ─── */
 // The webcam + mic are recorded with MediaRecorder while practising and stored in IndexedDB

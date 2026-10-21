@@ -373,3 +373,27 @@ From the first two live tests (practice 3.5 min, Teams meeting 2.5 min; both ran
   stronger answers work; coaching cues stay silent cards. Cost: same free-tier live model as practice mode
   (no Gemini charge on the current free key; a paid key would bill live minutes) + the usual Claude report.
 - Tests: 84 passing. Not yet tried live: a real role-play conversation, a real recording, a meeting with facts.
+
+## Live advice: meeting "next move" coach + practice side panel — 2026-10-21
+
+**Meeting Mode** (setup: "How chatty?" Quiet = delivery flags only / Balanced / Active, `?chatty=`):
+- **Next move / missed question / positives.** Every 30 s (Active 18 s) with ≥15 new words, the fast model
+  reads the last 2 minutes + brief and returns at most one `NEXT:`, `MISSED:` or (≤1 per 4 min) `GOOD:` line
+  (`_run_meeting_advice`). `_send_advice` drops repeats and keeps ≥12 s between advice (missed questions and
+  objections always show). New `advice` WS message → notch nudge with its own label + page card.
+- **Objection cards.** Brief field "Prepared answers to objections" (`Topic: answer` per line). A line from Them
+  that matches `OBJECTION_RE` (price, competitor, timing, approval, risk …, ≥25 s apart) gets a check: real
+  objection? → kind, their concern, the matching prepared answer and three steps (acknowledge, answer, ask
+  back). `objection_card` WS message → shown in the notch's hint area (🛡) and on the page.
+- **Question coach.** Open questions you ask are counted live (notch "N questions"); in sales/general calls,
+  5 min without one → "Ask an open question — what, how or why."
+- **Next-step guard.** 5 min before the planned end (or at 20 min), once, if the other side is heard: "has a
+  next step with a date been agreed?" → if NO, "No next step yet — propose a follow-up with a date."
+
+**Practice** (setup: "Feedback: live / only at the end", `?feedback=end`):
+- Side panel gets a live **stats strip** (wpm, fillers, repeats, eye contact, time — every 3 s), a **key-points
+  checklist** that ticks as you say them (coverage check every ~20 s), **advice cards** every ~20 s of new
+  speech (`TIP:` / `GOOD:` on content, not delivery), and **✨ Say it better** (rewrites your last ~2 lines).
+- "Only at the end": no coach voice, no live cards; everything is still measured and shown in the review.
+- Cost: Claude Haiku only (≈3–5 short calls a minute in a live call, fewer in practice). No Gemini cost added.
+- Tests: 88 passing. Not yet tried live.

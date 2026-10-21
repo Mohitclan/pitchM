@@ -343,3 +343,101 @@ def test_pitches_api(tmp_path, monkeypatch):
     assert body["pitches"][0]["name"] == "Chief OS"
     row = client.get("/api/sessions", headers={"x-user-id": "tester-a"}).json()["sessions"][0]
     assert row["pitch_name"] == "Chief OS" and row["pitch_version"] == 1 and row["roleplay_role"] == "client"
+
+
+def test_advice_gating_and_meeting_advice(monkeypatch):
+    import time
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-adv", session_kind="meeting", coach_mode="sales_demo")
+    assert m._send_advice(s, "next", "Ask who else signs off")
+    assert not m._send_advice(s, "next", "Confirm the budget")               # too soon after the last one
+    assert m._send_advice(s, "missed", "They asked about setup time")       # a missed question always shows
+    s.last_advice_at = time.monotonic() - 60
+    assert not m._send_advice(s, "next", "ask who else signs off")          # repeat
+    assert m._send_advice(s, "good", "Clear answer with a number")
+    s.last_advice_at = time.monotonic() - 60
+    assert not m._send_advice(s, "good", "Nice story")                     # positives stay rare
+    assert [a["kind"] for a in s.live_advice] == ["next", "missed", "good"]
+
+    async def fake_quick(prompt, **kw):
+        assert "Advice already given" in prompt
+        return "NEXT: Ask what happens if they don't fix this"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    s.last_advice_at = time.monotonic() - 60
+    asyncio.run(m._run_meeting_advice(s))
+    assert s.live_advice[-1]["text"] == "Ask what happens if they don't fix this" and not s.advice_pending
+    assert any(x.get("type") == "advice" for x in _drain(s))
+
+
+def test_objection_card_uses_prepared_answer(monkeypatch):
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-obj", session_kind="meeting")
+    m._apply_brief(s, {"objections": "Price: pays back in 3 months\nCompetitor: plugs into Zoho", "points": ["x"]})
+    assert [p["label"] for p in s.prepared_answers] == ["Price", "Competitor"]
+
+    async def fake_quick(prompt, **kw):
+        assert "1. Price: pays back in 3 months" in prompt
+        return "OBJECTION: price | too expensive for 40 stores\nPREPARED: 1\n1. Acknowledge it\n2. Payback in 3 months\n3. What does it cost today?"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    asyncio.run(m._run_objection_card(s, "Honestly this seems too expensive for 40 stores."))
+    card = s.objections[-1]
+    assert card["kind"] == "price" and card["prepared"]["answer"] == "pays back in 3 months" and len(card["points"]) == 3
+    assert any(x.get("type") == "objection_card" for x in _drain(s))
+
+
+def test_question_coach_counts_and_objection_trigger(monkeypatch):
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-q", session_kind="meeting")
+    calls = []
+    monkeypatch.setattr(m, "_run_objection_card", lambda state, text: calls.append(text) or asyncio.sleep(0))
+
+    async def run():
+        m._stt_callback(s, "user")("So what does onboarding look like for you? And how many people use it?")
+        m._stt_callback(s, "other")("That seems too expensive for us right now.")
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
+    assert s.open_questions == 2 and calls == ["That seems too expensive for us right now."]
+    quiet = SessionState(session_id="t-q2", session_kind="meeting", chattiness="quiet")
+    m._stt_callback(quiet, "other")("That seems too expensive.")
+    assert len(calls) == 1                                                   # quiet: flags only
+
+
+def test_next_step_guard_and_practice_helpers(monkeypatch):
+    import time
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-ns", session_kind="meeting")
+
+    async def no(prompt, **kw):
+        return "NO"
+
+    monkeypatch.setattr(m, "_quick_text", no)
+    asyncio.run(m._run_next_step_check(s))
+    assert "next step" in s.live_advice[-1]["text"]
+
+    p = SessionState(session_id="t-pr")
+    p.pitch_points = ["Payments for 30 ventures"]
+    p.add_transcript("user", "So basically we we do payments for lots of ventures and it is good I think.")
+
+    async def tip(prompt, **kw):
+        if "REWRITE" in prompt:
+            return "REWRITE: We run payments for 30 ventures from one platform."
+        assert "Key points they still need to cover: Payments for 30 ventures" in prompt
+        return "TIP: Lead with the number of ventures"
+
+    monkeypatch.setattr(m, "_quick_text", tip)
+    p.last_advice_at = time.monotonic() - 60
+    asyncio.run(m._run_practice_advice(p))
+    assert p.live_advice[-1] == {**p.live_advice[-1], "kind": "tip", "text": "Lead with the number of ventures"}
+    asyncio.run(m._run_say_better(p))
+    better = [x for x in _drain(p) if x.get("type") == "say_better"][-1]
+    assert better["rewrite"].startswith("We run payments") and "ventures" in better["original"]
+
+    end = SessionState(session_id="t-end", live_feedback=False)
+    assert end.live_feedback is False

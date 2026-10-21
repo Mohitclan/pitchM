@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261021e" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261021e" />
+  <link rel="stylesheet" href="/static/style.css?v=20261021f" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261021f" />
 </head>
 <body>
   <div id="app">
@@ -141,6 +141,14 @@
           </label>
 
           <label class="config-field">
+            <span class="config-label">Feedback</span>
+            <select id="feedback-mode" class="config-select">
+              <option value="live">Live — tips, checklist and advice while I talk</option>
+              <option value="end">Only at the end — no interruptions</option>
+            </select>
+          </label>
+
+          <label class="config-field">
             <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
             <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
               autocomplete="off" placeholder="Billing Hub pitch" />
@@ -245,6 +253,21 @@
               Coach Suggestions
               <span id="suggestion-count" class="panel-count">0</span>
             </div>
+            <div id="live-coach" class="live-coach hidden" aria-live="polite">
+              <div class="lc-stats">
+                <span class="lc-stat"><b id="lc-wpm">–</b> wpm</span>
+                <span class="lc-stat"><b id="lc-fillers">0</b> fillers</span>
+                <span class="lc-stat"><b id="lc-repeats">0</b> repeats</span>
+                <span class="lc-stat" title="Eye contact"><b id="lc-eye">–</b></span>
+                <span class="lc-stat"><b id="lc-time">0:00</b></span>
+              </div>
+              <div id="lc-points" class="lc-points hidden">
+                <div class="lc-title">Key points <span id="lc-points-count" class="lc-count"></span></div>
+                <ul id="lc-points-list" class="lc-points-list"></ul>
+              </div>
+              <button id="btn-say-better" type="button" class="lc-better-btn" title="Rewrite the last thing you said">✨ Say it better</button>
+              <div id="lc-better" class="lc-better hidden"></div>
+            </div>
             <div id="suggestions-feed" class="suggestions-feed">
               <div class="suggestions-empty">
                 Coaching moments show up here while you speak — what was measured,
@@ -345,10 +368,10 @@
     </div>
   </div>
 
-  <script src="/static/tester.js?v=20261021e"></script>
-  <script src="/static/audio-leveler.js?v=20261021e"></script>
-  <script src="/static/gaze.js?v=20261021e"></script>
-  <script src="/static/rehearse.js?v=20261021e"></script>
-  <script src="/static/app.js?v=20261021e"></script>
+  <script src="/static/tester.js?v=20261021f"></script>
+  <script src="/static/audio-leveler.js?v=20261021f"></script>
+  <script src="/static/gaze.js?v=20261021f"></script>
+  <script src="/static/rehearse.js?v=20261021f"></script>
+  <script src="/static/app.js?v=20261021f"></script>
 </body>
 </html>

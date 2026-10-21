@@ -420,3 +420,174 @@ def group_pitch_versions(sessions: list[dict]) -> list[dict]:
 # ── Role-play partner (practice) ─────────────────────────────────────────────
 ROLEPLAY_ROLES = ("investor", "interviewer", "client")
 ROLEPLAY_LABELS = {"investor": "Investor", "interviewer": "Interviewer", "client": "Client"}
+
+
+# ── Live advice (meeting "next move" coach + practice advice cards) ─────────
+CHATTINESS = ("quiet", "balanced", "active")
+# Seconds between advice checks, and the minimum new words before one is worth asking.
+ADVICE_EVERY_S = {"balanced": 30.0, "active": 18.0}
+ADVICE_MIN_NEW_WORDS = 15
+ADVICE_GAP_S = 12.0            # never show two pieces of advice closer than this
+POSITIVE_GAP_S = 240.0         # positive notes stay rare
+PRACTICE_ADVICE_EVERY_S = 20.0
+PRACTICE_ADVICE_MIN_NEW_WORDS = 20
+ADVICE_KINDS = ("next", "missed", "good", "tip")
+
+
+def meeting_advice_prompt(mode: str, conversation: str, brief: str, recent: list[str], allow_good: bool) -> str:
+    label = _MODE_LABEL.get(mode, "meeting")
+    good = ("GOOD: <what the presenter just did well, max 9 words> — only if something was clearly strong.\n"
+            if allow_good else "")
+    return (
+        f"You are a silent coach whispering to a presenter during a live {label}. Recent conversation "
+        "(You = presenter, Them = the other side):\n"
+        f"{conversation}\n\n"
+        + (f"Context:\n{brief}\n\n" if brief else "")
+        + (f"Advice already given (don't repeat): {'; '.join(recent[-5:])}\n\n" if recent else "")
+        + "Give AT MOST ONE short piece of advice for right now, only if it clearly helps:\n"
+        "MISSED: <the question Them asked that You didn't answer, max 10 words> — when You drifted away "
+        "from a question Them asked.\n"
+        "NEXT: <the best next move, imperative, max 10 words> — e.g. ask what happens if they don't fix "
+        "it, confirm who else decides, ask about budget or timeline, bring up a point from the context "
+        "not covered yet, check they're following.\n"
+        + good
+        + "Otherwise reply exactly: NONE\n"
+        "Reply with one line in one of those forms and nothing else."
+    )
+
+
+def practice_advice_prompt(mode: str, transcript: str, points: list[dict], recent: list[str]) -> str:
+    label = _MODE_LABEL.get(mode, "talk")
+    open_points = [p["text"] for p in points if not p.get("covered")]
+    return (
+        f"You coach a presenter rehearsing a {label}. What they said in the last minute or so:\n"
+        f"{transcript}\n\n"
+        + (f"Key points they still need to cover: {'; '.join(open_points)}\n\n" if open_points else "")
+        + (f"Advice already given (don't repeat): {'; '.join(recent[-5:])}\n\n" if recent else "")
+        + "Give ONE short piece of content advice for what to do next (structure, clarity, evidence, "
+        "missing point, ask, story) — or praise one thing done well. Not delivery (pace/fillers are "
+        "measured separately).\n"
+        "Reply with exactly one line: TIP: <advice, imperative, max 12 words> — or — "
+        "GOOD: <what worked, max 10 words> — or — NONE"
+    )
+
+
+def parse_advice(text: str) -> tuple[str, str] | None:
+    """'NEXT: Ask about budget' → ('next', 'Ask about budget'); None for NONE / anything else."""
+    m = re.match(r"\s*(next|missed|good|tip)\s*[:—–-]\s*(.+)", (text or "").strip().splitlines()[0] if text else "",
+                 re.IGNORECASE)
+    if not m:
+        return None
+    advice = " ".join(m.group(2).split()).strip(" \"“”")
+    if not advice or advice.upper().startswith("NONE"):
+        return None
+    return m.group(1).lower(), advice[:140]
+
+
+def is_repeat_advice(text: str, recent: list[str]) -> bool:
+    return is_duplicate_commitment(text, [{"task": r} for r in recent[-8:]])
+
+
+# ── Objection cards (meeting) ────────────────────────────────────────────────
+OBJECTION_KINDS = ("price", "competitor", "timing", "authority", "need", "trust", "other")
+OBJECTION_RE = re.compile(
+    r"\b(too (?:expensive|costly|much)|expensive|price|pricing|cost(?:s|ly)?|budget|afford|cheaper|discount|"
+    r"already (?:use|have|using|work with)|we use|competitor|alternative|switch(?:ing)?|"
+    r"not (?:now|right now|a priority|the right time|interested|sure)|next (?:quarter|year)|later|timing|"
+    r"(?:talk|check|run it) (?:to|with|by) (?:my|our)|my boss|the board|decision|approve|"
+    r"send me (?:an )?(?:email|deck|info)|think about it|don't (?:see|need)|why would (?:we|i)|"
+    r"risk|security|data|trust|proof|guarantee|what if it (?:doesn't|fails))\b",
+    re.IGNORECASE,
+)
+OBJECTION_GAP_S = 25.0
+
+
+def parse_prepared_answers(text: str) -> list[dict]:
+    """Brief lines 'Price: we pay back in 3 months' → [{label, answer}] (label is free text)."""
+    out = []
+    for line in (text or "").splitlines():
+        if ":" not in line:
+            continue
+        label, answer = line.split(":", 1)
+        label, answer = " ".join(label.split())[:40], " ".join(answer.split())[:300]
+        if label and answer:
+            out.append({"label": label, "answer": answer})
+    return out[:12]
+
+
+def objection_prompt(quote: str, conversation: str, prepared: list[dict], brief: str) -> str:
+    listing = "\n".join(f"{i + 1}. {p['label']}: {p['answer']}" for i, p in enumerate(prepared)) or "(none)"
+    return (
+        "Live sales/business call. Recent conversation (You = presenter, Them = the other side):\n"
+        f"{conversation}\n\n"
+        + (f"Context:\n{brief}\n\n" if brief else "")
+        + f"Them just said: \"{quote}\"\n\n"
+        f"The presenter's prepared answers:\n{listing}\n\n"
+        "Is this a real objection or push-back (price, competitor / current tool, timing, authority / "
+        "needs approval, no need, trust / risk)? If not, reply exactly: NONE\n"
+        "If yes, reply exactly in this form:\n"
+        "OBJECTION: <price|competitor|timing|authority|need|trust|other> | <their concern in max 8 words>\n"
+        "PREPARED: <number of the matching prepared answer, or 0>\n"
+        "1. <first thing to say, max 12 words>\n2. <second, max 12 words>\n3. <question to ask back, max 12 words>"
+    )
+
+
+def parse_objection(text: str, prepared: list[dict]) -> dict | None:
+    raw = text or ""
+    m = re.search(r"objection\s*:\s*([a-z]+)\s*\|\s*(.+)", raw, re.IGNORECASE)
+    if not m:
+        return None
+    kind = m.group(1).lower()
+    kind = kind if kind in OBJECTION_KINDS else "other"
+    concern = " ".join(m.group(2).split())[:80]
+    pm = re.search(r"prepared\s*:\s*(\d+)", raw, re.IGNORECASE)
+    idx = int(pm.group(1)) - 1 if pm else -1
+    steps = [" ".join(s.split())[:100] for s in re.findall(r"^\s*\d[.)]\s*(.+)$", raw, re.MULTILINE)]
+    steps = [s for s in steps if s][:3]
+    card = {"kind": kind, "concern": concern, "points": steps,
+            "prepared": prepared[idx] if 0 <= idx < len(prepared) else None}
+    return card if (steps or card["prepared"]) else None
+
+
+# ── Question coach + next-step guard (meeting) ───────────────────────────────
+_OPEN_WORDS = frozenset({"what", "why", "how", "which", "when", "where", "who"})
+_OPEN_STARTS = ("tell me", "walk me", "talk me", "describe", "help me understand", "explain")
+QUESTION_COACH_MODES = ("sales_demo", "general")
+QUESTION_COACH_AFTER_S = 300.0
+NEXT_STEP_MODES = ("sales_demo", "general", "pitch")
+
+
+def count_open_questions(text: str) -> int:
+    """Open questions in a line: a '?' sentence with what/why/how/… in its first words, or 'tell me …'."""
+    n = 0
+    for sentence in re.split(r"(?<=[.!?])\s+", (text or "").strip()):
+        low = sentence.lower().strip()
+        words = re.findall(r"[a-z']+", low)[:5]
+        if low.startswith(_OPEN_STARTS) or (low.endswith("?") and _OPEN_WORDS.intersection(words)):
+            n += 1
+    return n
+
+
+def next_step_prompt(conversation: str) -> str:
+    return (
+        "Conversation so far in a business call (You = presenter, Them = the other side):\n"
+        f"{conversation}\n\n"
+        "Has a concrete next step been agreed — a follow-up meeting, trial, proposal or decision WITH a "
+        "date or time? Reply exactly: YES or NO"
+    )
+
+
+# ── Practice: say the last thing better ──────────────────────────────────────
+def say_better_prompt(mode: str, last: str) -> str:
+    return (
+        f"A presenter rehearsing a {_MODE_LABEL.get(mode, 'talk')} just said (speech-to-text, may have "
+        f"small errors):\n\"{last}\"\n\n"
+        "Rewrite it so it's stronger: clear point first, concrete, confident, spoken style, 1-3 short "
+        "sentences, same facts — never invent numbers or names (use [placeholders]).\n"
+        "Reply exactly: REWRITE: <the stronger version>"
+    )
+
+
+def parse_say_better(text: str) -> str:
+    m = re.search(r"rewrite\s*:\s*(.+)", text or "", re.IGNORECASE | re.DOTALL)
+    return " ".join((m.group(1) if m else "").split()).strip(" \"“”")[:500]

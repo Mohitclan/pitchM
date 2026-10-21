@@ -263,6 +263,23 @@ class SessionState:
     # Practice: "" (coach only) or the role the live voice plays: investor | interviewer | client
     roleplay_role: str = ""
     roleplay_started: bool = False
+    # Live advice: how chatty the meeting coach is (quiet = flags only | balanced | active), whether
+    # practice shows feedback live or only at the end, and what was advised [{ts, kind, text}].
+    chattiness: str = "balanced"
+    live_feedback: bool = True
+    live_advice: list[dict] = field(default_factory=list)
+    last_advice_at: float = 0.0          # monotonic
+    last_good_at: float = 0.0            # monotonic
+    advice_pending: bool = False
+    # Meeting: prepared objection answers from the brief [{label, answer}] and objection cards shown.
+    prepared_answers: list[dict] = field(default_factory=list)
+    objections: list[dict] = field(default_factory=list)
+    last_objection_at: float = 0.0       # monotonic
+    # Meeting: open questions the presenter asked (question coach) and the next-step guard.
+    open_questions: int = 0
+    last_open_question_ts: float = 0.0   # seconds into the session
+    question_nudged_at: float = -1e9     # seconds into the session
+    next_step_checked: bool = False
     # Per-stream transcriber stats (segments, connects, rollovers, stalls, errors).
     transcription_health: dict = field(default_factory=dict)
     screen_enabled: bool = False

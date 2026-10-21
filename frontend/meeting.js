@@ -94,8 +94,9 @@
   const videoEl = $('mt-video');
   const fields = {
     mode: $('mt-mode'), platform: $('mt-platform'), persona: $('mt-persona'), camera: $('mt-camera'),
+    chatty: $('mt-chatty'),
   };
-  const briefFields = { notes: $('mt-notes'), points: $('mt-points'), minutes: $('mt-minutes') };
+  const briefFields = { notes: $('mt-notes'), points: $('mt-points'), minutes: $('mt-minutes'), objections: $('mt-objections') };
   const pointsPanel = $('mt-points-panel');
   const pointsList = $('mt-points-list');
   const pointsCount = $('mt-points-count');
@@ -156,7 +157,8 @@
   /* ── Settings persistence ───────────────────────── */
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    for (const k of ['mode', 'platform', 'persona']) if (saved[k]) fields[k].value = saved[k];
+    for (const k of ['mode', 'platform', 'persona', 'chatty']) if (saved[k] && fields[k]) fields[k].value = saved[k];
+    if (saved.objections && briefFields.objections) briefFields.objections.value = saved.objections;
     if (typeof saved.camera === 'boolean') fields.camera.checked = saved.camera;
     if (saved.client && clientField) clientField.value = saved.client;
   } catch (_) { /* ignore */ }
@@ -164,7 +166,8 @@
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         mode: fields.mode.value, platform: fields.platform.value,
-        persona: fields.persona.value, camera: fields.camera.checked,
+        persona: fields.persona.value, camera: fields.camera.checked, chatty: fields.chatty?.value || 'balanced',
+        objections: briefFields.objections?.value || '',
         client: (clientField?.value || '').trim(),
       }));
     } catch (_) { /* ignore */ }
@@ -288,7 +291,7 @@
    */
   function showNudge(text, level = 'nudge', opts = {}) {
     if (!bubble || !text) return;
-    if (prefs.quiet && !opts.urgent && ['nudge', 'alert'].includes(level) && themSpeaking()) {
+    if (prefs.quiet && !opts.urgent && ['nudge', 'alert', 'good'].includes(level) && themSpeaking()) {
       heldNudge = { text, level, opts };
       b('.pm-state').textContent = 'Tip ready…';
       return;
@@ -296,11 +299,11 @@
     markActivity();
     currentNudgeIndex = Number.isInteger(opts.index) ? opts.index : null;
     resetRateButtons(currentNudgeIndex != null);
-    if (lastNudgeText && lastNudgeText !== text && ['nudge', 'alert'].includes(level)) pushRecent(lastNudgeText);
-    if (['nudge', 'alert'].includes(level)) lastNudgeText = text;
+    if (lastNudgeText && lastNudgeText !== text && ['nudge', 'alert', 'good'].includes(level)) pushRecent(lastNudgeText);
+    if (['nudge', 'alert', 'good'].includes(level)) lastNudgeText = text;
     b('.pm-nudge').textContent = text;
     b('.pm-mini').textContent = text;
-    setBubbleState(level, level === 'alert' ? 'Heads up' : 'Nudge');
+    setBubbleState(level, opts.label || (level === 'alert' ? 'Heads up' : 'Nudge'));
     if (nudgeTimer) clearTimeout(nudgeTimer);
     openDrop(true);
     nudgeTimer = setTimeout(() => {
@@ -357,10 +360,11 @@
     const points = (briefFields.points?.value || '').split('\n').map((x) => x.trim()).filter(Boolean);
     const minutes = Number(briefFields.minutes?.value || 0);
     const client = (clientField?.value || '').trim();
+    const objections = (briefFields.objections?.value || '').trim();
     plannedMinutes = minutes;
-    if (!notes && !points.length && !client) return;
+    if (!notes && !points.length && !client && !objections) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'brief', notes, points, planned_minutes: minutes, client }));
+      ws.send(JSON.stringify({ type: 'brief', notes, points, planned_minutes: minutes, client, objections }));
     }
   }
 
@@ -418,6 +422,7 @@
     if (!bubble) return;
     const box = b('.pm-hint');
     box.classList.toggle('is-help', !!msg.isHelp);
+    box.classList.remove('is-objection');
     box.querySelector('.pm-hint-label').textContent = label;
     box.querySelector('.pm-hint-q').textContent = msg.question ? `“${msg.question}”` : '';
     box.querySelector('.pm-hint-points').innerHTML = points.map((p) => `<li>${esc(p)}</li>`).join('');
@@ -813,6 +818,18 @@
       case 'facts':
         renderFacts(msg.items);
         break;
+      case 'advice':
+        showAdvice(msg);
+        break;
+      case 'objection_card':
+        showObjection(msg);
+        break;
+      case 'questions':
+        if (b('.pm-questions')) {
+          b('.pm-questions').textContent = String(msg.count || 0);
+          b('.pm-q-stat')?.classList.remove('hidden');
+        }
+        break;
       case 'coach_cue':
         setCue(msg.index, msg.text);
         showNudge(msg.text, 'alert', { index: Number(msg.index) });
@@ -855,6 +872,58 @@
       const c = newMine[newMine.length - 1];
       showNudge(`🤝 Noted: ${c.task}${c.due ? ` (${c.due})` : ''}`, 'nudge', { urgent: true });
     }
+    fitPipWindow();
+  }
+
+  /* ── Live advice: next move, missed question, praise, objections ── */
+  const ADVICE_STYLE = {
+    next: { level: 'nudge', label: 'Next move', icon: '➜' },
+    missed: { level: 'alert', label: 'Missed question', icon: '⚠' },
+    good: { level: 'good', label: 'Nice', icon: '✓' },
+  };
+
+  function adviceCard(kindClass, title, body, ts) {
+    nudgesEl.querySelector('.mt-empty')?.remove();
+    const card = document.createElement('div');
+    card.className = `mt-nudge ${kindClass}`;
+    card.innerHTML = `<div class="mt-nudge-head"><span class="mt-line-time">${fmt(ts ?? elapsed())}</span><b>${esc(title)}</b></div>${body}`;
+    nudgesEl.prepend(card);
+  }
+
+  function showAdvice(msg) {
+    const st = ADVICE_STYLE[msg.kind] || ADVICE_STYLE.next;
+    adviceCard(`type-advice advice-${esc(msg.kind)}`, st.label, `<div class="mt-nudge-desc">${esc(msg.text)}</div>`, msg.ts);
+    showNudge(`${st.icon} ${msg.text}`, st.level, { label: st.label, urgent: msg.kind === 'missed' });
+  }
+
+  const OBJECTION_LABELS = {
+    price: 'Price', competitor: 'Current tool / competitor', timing: 'Timing', authority: 'Needs approval',
+    need: 'No need', trust: 'Risk / trust', other: 'Push-back',
+  };
+
+  /** Them pushed back: prepared answer first (if any), then three steps to respond. */
+  function showObjection(msg) {
+    const label = OBJECTION_LABELS[msg.kind] || 'Push-back';
+    const points = [
+      ...(msg.prepared ? [`Your answer: ${msg.prepared.answer}`] : []),
+      ...(msg.points || []),
+    ].slice(0, 4);
+    adviceCard('type-objection', `Objection · ${label}`,
+      `<div class="mt-nudge-desc">“${esc(msg.quote || msg.concern || '')}”</div><ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`, msg.ts);
+    if (!bubble) return;
+    const box = b('.pm-hint');
+    box.classList.remove('is-help');
+    box.classList.add('is-objection');
+    box.querySelector('.pm-hint-label').textContent = `🛡 ${label}`;
+    box.querySelector('.pm-hint-q').textContent = msg.concern ? `“${msg.concern}”` : '';
+    box.querySelector('.pm-hint-points').innerHTML = points.map((p) => `<li>${esc(p)}</li>`).join('');
+    box.classList.remove('hidden');
+    bubble.classList.add('has-hint');
+    openDrop(true);
+    scheduleHintClose();
+    b('.pm-mini').textContent = `🛡 ${points[0] || label}`;
+    setBubbleState('hint', label);
+    markActivity();
     fitPipWindow();
   }
 
@@ -1291,6 +1360,7 @@
     url.searchParams.set('platform', fields.platform.value);
     url.searchParams.set('mode', fields.mode.value);
     url.searchParams.set('persona', fields.persona.value);
+    url.searchParams.set('chatty', fields.chatty?.value || 'balanced');
     url.searchParams.set('context', 'virtual');
     url.searchParams.set('user', USER_ID);
     const token = (localStorage.getItem('pitchmirror_api_token') || '').trim();

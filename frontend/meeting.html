@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261021e" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261021e" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261021e" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261021f" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261021f" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261021f" />
 </head>
 <body class="mt-page">
 
@@ -64,6 +64,14 @@
             <option value="vc">Brutal VC</option>
           </select>
         </label>
+        <label class="mt-field">
+          <span>How chatty?</span>
+          <select id="mt-chatty">
+            <option value="quiet">Quiet — delivery flags only</option>
+            <option value="balanced" selected>Balanced — plus next moves &amp; objections</option>
+            <option value="active">Active — advice more often</option>
+          </select>
+        </label>
         <label class="mt-toggle">
           <input id="mt-camera" type="checkbox" checked />
           <span>Use my camera to track eye contact</span>
@@ -89,6 +97,11 @@
             <span>Points to cover <em>(one per line — leave empty and the coach picks them from your notes)</em></span>
             <textarea id="mt-points" rows="4" maxlength="2000"
               placeholder="Per-store pricing and volume discount&#10;30-day pilot offer&#10;Setup takes under a day&#10;Agree next meeting date"></textarea>
+          </label>
+          <label class="mt-field mt-field-wide">
+            <span>Prepared answers to objections <em>(one per line, "Topic: answer")</em></span>
+            <textarea id="mt-objections" rows="3" maxlength="4000"
+              placeholder="Price: pays back in 3 months for a 40-store chain&#10;Competitor: we plug into Zoho, so nothing to replace&#10;Timing: the pilot takes one week, no IT work"></textarea>
           </label>
           <label class="mt-field">
             <span>Planned length</span>
@@ -228,6 +241,7 @@
             <span class="pm-stat"><b class="pm-talk">–</b> your talk</span>
             <span class="pm-stat pm-eye-stat"><b class="pm-eye">–</b></span>
             <span class="pm-stat pm-points-stat hidden"><b class="pm-points-done">0/0</b> points</span>
+            <span class="pm-stat pm-q-stat hidden" title="Open questions you asked"><b class="pm-questions">0</b> questions</span>
           </div>
           <div class="pm-points hidden"><span class="pm-points-label">To cover:</span> <span class="pm-points-left"></span></div>
           <div class="pm-commits hidden"><span class="pm-points-label">Promised:</span> <span class="pm-commits-text"></span></div>
@@ -271,10 +285,10 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261021e"></script>
-  <script src="/static/audio-leveler.js?v=20261021e"></script>
-  <script src="/static/gaze.js?v=20261021e"></script>
-  <script src="/static/rehearse.js?v=20261021e"></script>
-  <script src="/static/meeting.js?v=20261021e"></script>
+  <script src="/static/tester.js?v=20261021f"></script>
+  <script src="/static/audio-leveler.js?v=20261021f"></script>
+  <script src="/static/gaze.js?v=20261021f"></script>
+  <script src="/static/rehearse.js?v=20261021f"></script>
+  <script src="/static/meeting.js?v=20261021f"></script>
 </body>
 </html>

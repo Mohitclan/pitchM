@@ -218,3 +218,5 @@
 .pm-commits .pm-points-label { color: var(--pm-ok); }
 .pm-facts { font-size: 12px; color: var(--pm-ink-2); line-height: 1.45; }
 .pm-facts .pm-points-label { color: var(--pm-hint); }
+.pm-bubble[data-state="good"] { --pm-state-color: var(--pm-ok); }
+.pm-hint.is-objection .pm-hint-label { color: var(--pm-warn); }
