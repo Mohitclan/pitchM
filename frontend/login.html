@@ -9,34 +9,60 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,600;10..48,800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --bg:#f9fafb; --card:#fff; --line:#e5e7eb; --text:#0d1117; --mute:#6b7280; --accent:#1d4ed8; --danger:#dc2626; --ok:#16a34a; }
+    :root { --bg:#f7f8fb; --card:#fff; --line:#e5e7eb; --text:#0d1117; --mute:#6b7280; --accent:#1d4ed8; --danger:#dc2626; --ok:#16a34a; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
-           background: var(--bg); color: var(--text); font: 15px/1.5 'Manrope', system-ui, sans-serif; }
-    main { width: 100%; max-width: 400px; }
-    .brand { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 18px;
-             font: 800 22px 'Bricolage Grotesque', sans-serif; letter-spacing: -0.3px; color: var(--text); text-decoration: none; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.5 'Manrope', system-ui, sans-serif; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+    .pane { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 56px 56px;
+            color: #fff; background: linear-gradient(145deg, #1e3a8a 0%, #4338ca 55%, #7c3aed 100%); }
+    .pane::before, .pane::after { content: ''; position: absolute; border-radius: 50%; filter: blur(60px); opacity: .45; pointer-events: none; }
+    .pane::before { width: 380px; height: 380px; background: #818cf8; top: -120px; right: -100px; }
+    .pane::after { width: 320px; height: 320px; background: #c084fc; bottom: -120px; left: -80px; }
+    .pane > * { position: relative; z-index: 1; }
+    .pane .logo { display: inline-flex; align-items: center; gap: 8px; font: 800 22px 'Bricolage Grotesque', sans-serif; color: #fff; text-decoration: none; }
+    .pane h2 { margin: 8px 0 0; font: 800 clamp(30px, 3.4vw, 44px)/1.08 'Bricolage Grotesque', sans-serif; letter-spacing: -0.02em; max-width: 14ch; }
+    .pane ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 15.5px; font-weight: 600; color: #e0e7ff; }
+    .pane li::before { content: '✓'; display: inline-flex; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; align-items: center; justify-content: center; background: rgba(255,255,255,.18); font-size: 12px; }
+    .say { margin-top: 6px; max-width: 420px; padding: 14px 16px; border-radius: 16px; background: rgba(15, 20, 32, .78); border-left: 4px solid #93c5fd; font-size: 14.5px; font-weight: 600; line-height: 1.5; box-shadow: 0 24px 50px rgba(0,0,0,.3); }
+    .say small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: #93c5fd; margin-bottom: 4px; }
+    main { display: grid; place-items: center; padding: 32px 20px; }
+    .wrap { width: 100%; max-width: 410px; }
+    .brand { display: none; align-items: center; justify-content: center; gap: 8px; margin-bottom: 18px; font: 800 22px 'Bricolage Grotesque', sans-serif; color: var(--text); text-decoration: none; }
     .brand span { color: var(--accent); }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 22px 20px; }
-    h1 { margin: 0 0 4px; font: 700 20px 'Bricolage Grotesque', sans-serif; }
-    .sub { margin: 0 0 16px; color: var(--mute); font-size: 14px; }
-    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--bg); border-radius: 999px; margin-bottom: 16px; }
-    .tabs button { font: inherit; font-size: 13px; font-weight: 700; border: 0; border-radius: 999px; padding: 8px 0; cursor: pointer; color: var(--mute); background: transparent; }
-    .tabs button[aria-selected="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-    label { display: block; margin: 0 0 12px; font-size: 12px; font-weight: 700; color: var(--mute); }
-    input { display: block; width: 100%; margin-top: 5px; font: inherit; font-size: 15px; font-weight: 500; color: var(--text);
-            background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-    input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
-    .hint { margin: -6px 0 12px; font-size: 12px; color: var(--mute); }
-    button.go { width: 100%; font: inherit; font-size: 15px; font-weight: 700; color: #fff; background: var(--accent); border: 0; border-radius: 999px; padding: 11px 0; cursor: pointer; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 28px 28px 24px; box-shadow: 0 18px 50px rgba(30, 41, 90, .1); }
+    h1 { margin: 0 0 4px; font: 800 26px 'Bricolage Grotesque', sans-serif; letter-spacing: -0.01em; }
+    .sub { margin: 0 0 18px; color: var(--mute); font-size: 14.5px; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #eef0f5; border-radius: 999px; margin-bottom: 18px; }
+    .tabs button { font: inherit; font-size: 13.5px; font-weight: 800; border: 0; border-radius: 999px; padding: 9px 0; cursor: pointer; color: var(--mute); background: transparent; }
+    .tabs button[aria-selected="true"] { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+    label { display: block; margin: 0 0 14px; font-size: 13px; font-weight: 800; color: var(--text); }
+    input { display: block; width: 100%; margin-top: 6px; font: inherit; font-size: 15px; font-weight: 500; color: var(--text);
+            background: #fff; border: 1px solid #d1d5db; border-radius: 12px; padding: 12px 14px; }
+    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(29,78,216,.12); }
+    .hint { margin: -8px 0 14px; font-size: 12.5px; color: var(--mute); }
+    button.go { width: 100%; font: inherit; font-size: 15.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #1d4ed8, #4f46e5); border: 0; border-radius: 999px; padding: 13px 0; cursor: pointer; box-shadow: 0 10px 22px rgba(29,78,216,.28); }
     button.go:disabled { opacity: .6; cursor: default; }
     .error { min-height: 20px; margin: 10px 0 0; font-size: 13px; color: var(--danger); }
     .note { margin: 14px 0 0; font-size: 12.5px; color: var(--mute); text-align: center; }
+    .back { display: block; margin-top: 16px; text-align: center; font-size: 13px; color: var(--mute); text-decoration: none; }
     .hidden { display: none !important; }
+    @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .pane { display: none; } .brand { display: flex; } main { padding-top: 40px; align-items: start; } }
   </style>
 </head>
 <body>
+<div class="shell">
+<aside class="pane">
+  <a class="logo" href="/">◎ Pitchlight</a>
+  <h2>Your coach for every client call</h2>
+  <ul>
+    <li>A script that follows your voice</li>
+    <li>Ready-to-read answers from your own documents</li>
+    <li>Private scripts, notes and history for each person</li>
+  </ul>
+  <div class="say"><small>Say this</small>It is 49 dollars per clinic per month, and with 22 clinics there is no setup fee.</div>
+</aside>
 <main>
+<div class="wrap">
   <a class="brand" href="/"><span>◎</span> Pitchlight</a>
   <div class="card">
     <div id="off" class="hidden">
@@ -70,7 +96,10 @@
       <p class="note" id="privacy">Your sessions, history, goals and pitches are private to your account.</p>
     </div>
   </div>
+  <a class="back" href="/">← Back to the home page</a>
+</div>
 </main>
+</div>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);

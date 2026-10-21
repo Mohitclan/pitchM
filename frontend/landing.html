@@ -4,91 +4,130 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pitchlight — Walk into every client call prepared</title>
-  <meta name="description" content="Pitchlight prepares your script and answers, follows your voice live, and quietly tells you what to say when a client asks something hard." />
+  <meta name="description" content="Pitchlight drafts your script and answers, follows your voice live, and quietly shows you exactly what to say when a client asks something hard." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/landing.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/landing.css?v=20261025a" />
 </head>
-<body class="pl-page">
+<body class="pl-page ld-body">
   <header class="pl-header" data-page="landing"></header>
 
   <main>
+    <!-- HERO -->
     <section class="ld-hero">
-      <div class="ld-wrap">
-        <span class="pl-chip is-accent">AI coach for sales and client calls</span>
-        <h1>Walk into every client call <em>prepared.</em></h1>
-        <p class="ld-sub">Pitchlight drafts your script and answers, follows your voice while you talk, and quietly shows you exactly what to say when the client asks something hard. Only you can see it.</p>
-        <div class="ld-cta">
-          <a class="pl-btn is-accent is-lg" id="ld-primary" href="/meeting">Try the practice meeting</a>
-          <a class="pl-btn is-ghost is-lg" href="/guide">See how it works</a>
+      <div class="ld-glow ld-glow-a"></div><div class="ld-glow ld-glow-b"></div>
+      <div class="ld-wrap ld-hero-grid">
+        <div class="ld-hero-copy">
+          <span class="ld-pill"><i></i> AI coach for sales and client calls</span>
+          <h1>Walk into every client call <em>prepared.</em></h1>
+          <p class="ld-sub">Pitchlight drafts your script and answers, follows your voice while you talk, and quietly shows you exactly what to say when a client asks something hard. Only you can see it.</p>
+          <div class="ld-cta" id="ld-cta">
+            <a class="pl-btn is-accent is-lg" id="ld-primary" href="/meeting">Try the practice meeting</a>
+            <a class="pl-btn is-ghost is-lg" href="#how">See how it works</a>
+          </div>
+          <p class="ld-note" id="ld-note">Free to try · No credit card · Works in Chrome</p>
+          <ul class="ld-checks">
+            <li>Script that follows your voice</li><li>Answers from your own documents</li><li>Never invents a number</li>
+          </ul>
         </div>
-        <p class="ld-note" id="ld-note">Free to try · No credit card</p>
 
-        <div class="ld-demo" aria-hidden="true">
-          <div class="ld-demo-client"><span>Priya, client</span>“How much does it cost per clinic, and is there a setup fee?”</div>
-          <div class="ld-demo-say"><span>Say this</span>Billing Hub is 49 dollars per clinic per month, and with 22 clinics there is no setup fee. Annual plans get two months free.<em>From the company hub · Pricing and FAQ</em></div>
+        <!-- Product mock-up (pure HTML/CSS) -->
+        <div class="ld-mock" aria-hidden="true">
+          <div class="ld-win">
+            <div class="ld-win-bar"><i></i><i></i><i></i><span>Northwind Dental · Google Meet</span></div>
+            <div class="ld-win-body">
+              <div class="ld-tile ld-tile-them"><b>P</b><span>Priya Sharma</span></div>
+              <div class="ld-tile ld-tile-you"><b>You</b><span>Camera on</span></div>
+              <div class="ld-bubble">“How much does it cost per clinic, and is there a setup fee?”</div>
+            </div>
+          </div>
+          <div class="ld-notch"><span class="ld-dot"></span> Listening · 3/5 points <em>04:12</em></div>
+          <div class="ld-panel">
+            <div class="ld-panel-tabs"><span class="on">Answers</span><span>Questions <b>3</b></span><span>Script</span></div>
+            <div class="ld-say"><small>Say this</small>Billing Hub is <b>49 dollars</b> per clinic per month, and with 22 clinics there is <b>no setup fee</b>. Annual plans get two months free.<em>From the company hub · Pricing and FAQ</em></div>
+            <ol class="ld-hints"><li>Confirm 49 dollars per clinic</li><li>No setup fee for 10+ clinics</li><li>Offer the free 30-day pilot</li></ol>
+            <div class="ld-script"><small>Your script · 62% covered</small><p class="done">I will show you how Billing Hub puts every payment in one dashboard.</p><p class="next">Today your team tracks payments in spreadsheets and Zoho Books.</p><p>Month end close takes about six days.</p></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="ld-section">
+    <section class="ld-strip">
+      <div class="ld-wrap"><span>Floats on top of</span><b>Zoom</b><b>Google Meet</b><b>Microsoft Teams</b><b>Webex</b><span class="ld-strip-end">Tips are text only. Nobody else sees them.</span></div>
+    </section>
+
+    <!-- HOW -->
+    <section class="ld-section" id="how">
       <div class="ld-wrap">
+        <p class="ld-eyebrow">How it works</p>
         <h2>Three steps. Then just go.</h2>
         <div class="ld-steps">
-          <div class="pl-card"><span class="ld-num">1</span><h3>Prepare</h3><p>Paste a product page or your notes. Get a script, the hardest questions with answers, objection replies and a one-page cheat sheet, using only facts from your material.</p></div>
-          <div class="pl-card"><span class="ld-num">2</span><h3>Practice</h3><p>A built-in client asks you 11 realistic questions out loud. You see every feature work, with nothing at stake and nothing saved to your real data.</p></div>
-          <div class="pl-card"><span class="ld-num">3</span><h3>Meet</h3><p>A small notch floats on top of Zoom, Meet or Teams. It follows your script, answers questions from your documents and your company's knowledge, and reviews the call afterwards.</p></div>
+          <article class="ld-step"><div class="ld-ico ld-ico-blue">✍️</div><span class="ld-num">1</span><h3>Prepare</h3><p>Paste a product page or your notes. Get a script, the hardest questions with answers, objection replies and a cheat sheet, using only facts from your material.</p></article>
+          <article class="ld-step"><div class="ld-ico ld-ico-violet">🎯</div><span class="ld-num">2</span><h3>Practice</h3><p>A built-in client asks you 11 realistic questions out loud. You watch every feature work, with nothing at stake and nothing saved to your real data.</p></article>
+          <article class="ld-step"><div class="ld-ico ld-ico-green">🎧</div><span class="ld-num">3</span><h3>Meet</h3><p>A small notch floats on top of your call. It follows your script, answers client questions from your documents and company knowledge, and reviews the call afterwards.</p></article>
         </div>
       </div>
     </section>
 
+    <!-- FEATURES -->
     <section class="ld-section ld-alt">
       <div class="ld-wrap">
-        <h2>Built for the moment a client asks something hard</h2>
+        <p class="ld-eyebrow">Built for the moment a client asks something hard</p>
+        <h2>Always know what to say next</h2>
         <div class="ld-grid">
-          <div><h3>A script that follows your voice</h3><p>Your next line is highlighted as you speak. Lose your place? Press I'm lost and see exactly what to say next.</p></div>
-          <div><h3>Ready-to-read answers</h3><p>When the client asks, you get the exact words to say, grounded in your own documents. If it is not in your notes, the coach says so instead of inventing it.</p></div>
-          <div><h3>One company knowledge hub</h3><p>Admins upload decks and documents for every business. If a client asks about a product you did not prepare for, the coach finds it there.</p></div>
-          <div><h3>Objections handled live</h3><p>Price, competitor, timing, approval: your prepared answer first, then three ways to respond. Plus silent nudges on filler words, pace and talking too long.</p></div>
-          <div><h3>A review you can act on</h3><p>Recap with decisions and action items, a follow-up email ready to send, a question-by-question review and a readiness check: Ready, Almost or Not yet.</p></div>
-          <div><h3>Private to each person</h3><p>Every user has their own account, scripts, documents and history. Only the company hub is shared, and only admins change it.</p></div>
+          <article><div class="ld-ico ld-ico-blue">🧭</div><h3>A script that follows your voice</h3><p>Your next line is highlighted as you speak. Lose your place? Press <b>I'm lost</b> and see exactly where you are.</p></article>
+          <article><div class="ld-ico ld-ico-violet">💬</div><h3>Ready-to-read answers</h3><p>When the client asks, you get the exact words to say, grounded in your documents. If it isn't in your notes, you are told, not guessed at.</p></article>
+          <article><div class="ld-ico ld-ico-green">📚</div><h3>One company knowledge hub</h3><p>Admins upload decks and documents for every business. Asked about a product you didn't prepare? The coach finds it there.</p></article>
+          <article><div class="ld-ico ld-ico-amber">🛡️</div><h3>Objections handled live</h3><p>Price, competitor, timing, approval: your prepared answer first, then three ways to respond. Plus quiet nudges on fillers and pace.</p></article>
+          <article><div class="ld-ico ld-ico-rose">📋</div><h3>A review you can act on</h3><p>Recap with decisions and action items, a follow-up email ready to send, and a readiness check: Ready, Almost or Not yet.</p></article>
+          <article><div class="ld-ico ld-ico-sky">🔒</div><h3>Private to each person</h3><p>Every user has their own account, scripts, documents and history. Only the company hub is shared, and only admins change it.</p></article>
         </div>
       </div>
     </section>
 
+    <!-- SOLO + CTA -->
     <section class="ld-section">
       <div class="ld-wrap ld-two">
         <div>
-          <h2>Also: rehearse alone</h2>
-          <p class="pl-lead">The practice app gives live coaching on filler words, pace and eye contact, with optional AI role-play as an investor, interviewer or client, and a full scored review with transcript and video replay.</p>
+          <p class="ld-eyebrow">Also</p>
+          <h2>Rehearse alone, any time</h2>
+          <p class="ld-lead">The practice app coaches filler words, pace and eye contact live, with optional AI role-play as an investor, interviewer or client, then gives a scored review with transcript and video replay.</p>
           <p><a class="pl-btn is-ghost" href="/app">Open the practice app</a></p>
         </div>
-        <div class="pl-card ld-final">
+        <div class="ld-final">
+          <div class="ld-glow ld-glow-c"></div>
           <h3>Ready for your next call?</h3>
-          <p>Start with the practice meeting. It takes about twelve minutes.</p>
-          <a class="pl-btn is-accent" id="ld-final" href="/meeting">Start practice meeting</a>
+          <p>Start with the practice meeting. It takes about twelve minutes and shows you everything.</p>
+          <a class="pl-btn is-lg ld-final-btn" id="ld-final" href="/meeting">Start practice meeting</a>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="ld-footer"><div class="ld-wrap"><span>◎ Pitchlight</span><span><a href="/guide">How it works</a> · <a href="/login">Sign in</a></span></div></footer>
+  <footer class="ld-footer"><div class="ld-wrap"><span>◎ Pitchlight</span><span><a href="/guide">How it works</a> · <a href="/login">Sign in</a> · <a href="/login?signup=1">Create account</a></span></div></footer>
 
-  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261025a"></script>
   <script>
-  // Accounts on: sign-in link / name in the header and a Home shortcut for signed-in people.
+  // With accounts on: Sign in / Create account (or Go to Home) in the header and hero.
   fetch('/auth/me', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((info) => {
     if (!info || info.mode !== 'accounts') return;
     const slot = document.getElementById('tester-slot');
-    document.getElementById('ld-note').textContent = 'Sign in to keep your own private scripts, documents and history';
-    if (!info.user) { slot.innerHTML = '<a class="pl-btn is-sm" href="/login">Sign in</a>'; return; }
-    slot.innerHTML = '<a class="pl-btn is-sm" href="/home"></a>';
-    slot.firstChild.textContent = 'Go to Home';
-    document.getElementById('ld-primary').href = '/home';
-    document.getElementById('ld-primary').textContent = 'Go to your Home';
+    const note = document.getElementById('ld-note');
+    if (!info.user) {
+      slot.innerHTML = '<a class="pl-btn is-ghost is-sm" href="/login">Sign in</a> <a class="pl-btn is-accent is-sm" href="/login?signup=1">Create account</a>';
+      document.getElementById('ld-primary').href = '/login?signup=1';
+      document.getElementById('ld-primary').textContent = 'Create your free account';
+      document.getElementById('ld-final').href = '/login?signup=1';
+      document.getElementById('ld-final').textContent = 'Create your free account';
+      note.innerHTML = 'Already have an account? <a href="/login">Sign in</a> · No credit card';
+      return;
+    }
+    slot.innerHTML = '<a class="pl-btn is-accent is-sm" href="/home">Go to Home</a>';
+    ['ld-primary', 'ld-final'].forEach((id) => { const el = document.getElementById(id); el.href = '/home'; el.textContent = 'Go to your Home'; });
+    note.textContent = 'Welcome back, ' + (info.user.name || '').split(' ')[0];
   }).catch(() => {});
   </script>
 </body>
