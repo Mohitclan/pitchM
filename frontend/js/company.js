@@ -1,22 +1,7 @@
 /** Pitchlight — company hub: businesses and their documents. Everyone reads; admins add and remove. */
 (function () {
   'use strict';
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const headers = (json) => {
-    const h = { 'x-user-id': localStorage.getItem('pitchmirror_user_id') || '' };
-    const token = (localStorage.getItem('pitchmirror_api_token') || '').trim();
-    if (token) h.Authorization = `Bearer ${token}`;
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-  };
-  async function api(path, opts = {}) {
-    const resp = await fetch(path, { method: opts.method || 'GET', headers: headers(!!opts.json), body: opts.json ? JSON.stringify(opts.json) : opts.body });
-    let data = null;
-    try { data = await resp.json(); } catch (_) { /* empty */ }
-    if (!resp.ok) throw new Error((data && data.detail) || `Something went wrong (${resp.status})`);
-    return data;
-  }
+  const { api, esc, $ } = window.PL;
   const say = (text, err) => { $('cp-status').textContent = text || ''; $('cp-status').classList.toggle('err', !!err); };
 
   async function load() {
@@ -27,7 +12,7 @@
     $('cp-add-business').classList.toggle('hidden', !edit);
     const ventures = data.ventures || [];
     $('cp-list').innerHTML = ventures.length ? ventures.map((v) => `
-      <section class="mt-card pp-card cp-venture" data-venture="${esc(v.name)}">
+      <section class="pl-card pp-card cp-venture" data-venture="${esc(v.name)}">
         <div class="cp-head">
           <div class="cp-sum"><h2 class="pp-h2">${esc(v.name)}</h2>
             ${v.description ? `<p class="pp-hint">${esc(v.description)}</p>` : (edit && v.name !== 'General' ? '<p class="pp-hint">No summary yet. A short paragraph helps the coach answer "what does this business do?".</p>' : '')}
@@ -38,20 +23,20 @@
           <span class="sub">${Math.max(1, Math.round(d.size / 1000))}k chars</span>
           ${edit ? `<button data-doc="${esc(d.doc_id)}">Delete</button>` : ''}</li>`).join('')}</ul>
         ${edit ? `<div class="cp-upload">
-          <label class="mt-btn mt-btn-ghost cp-file">Upload decks or documents
+          <label class="pl-btn is-ghost cp-file">Upload decks or documents
             <input type="file" multiple hidden data-venture="${esc(v.name === 'General' ? '' : v.name)}" accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" /></label>
           <details><summary>or paste text</summary>
             <input type="text" class="cp-paste-title" maxlength="80" placeholder="Title, e.g. Pricing 2026" />
             <textarea class="cp-paste-text" rows="5" placeholder="Paste the text"></textarea>
-            <button class="mt-btn mt-btn-ghost cp-paste-add" data-venture="${esc(v.name === 'General' ? '' : v.name)}">Add</button></details>
+            <button class="pl-btn is-ghost cp-paste-add" data-venture="${esc(v.name === 'General' ? '' : v.name)}">Add</button></details>
         </div>` : ''}
       </section>`).join('')
-      : `<section class="mt-card pp-card"><p class="pp-hint">${edit ? 'No businesses yet. Add the first one above, then upload its decks.' : 'The admin has not added anything yet.'}</p></section>`;
+      : `<section class="pl-card pp-card"><p class="pp-hint">${edit ? 'No businesses yet. Add the first one above, then upload its decks.' : 'The admin has not added anything yet.'}</p></section>`;
 
     document.querySelectorAll('.cp-edit').forEach((b) => b.addEventListener('click', () => {
       const box = b.closest('.cp-sum');
       box.innerHTML = `<textarea rows="4" maxlength="1500">${esc(b.dataset.desc)}</textarea>
-        <div><button class="mt-btn mt-btn-primary cp-save">Save summary</button> <button class="cp-link cp-cancel">Cancel</button></div>`;
+        <div><button class="pl-btn is-accent cp-save">Save summary</button> <button class="cp-link cp-cancel">Cancel</button></div>`;
       box.querySelector('.cp-cancel').addEventListener('click', load);
       box.querySelector('.cp-save').addEventListener('click', async () => {
         try { await api(`/api/company/ventures?name=${encodeURIComponent(b.dataset.name)}`, { method: 'PUT', json: { description: box.querySelector('textarea').value } }); say('Summary saved.'); }

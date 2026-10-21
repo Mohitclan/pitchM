@@ -2706,6 +2706,12 @@ function renderReadiness(data) {
   </div>`;
 }
 
+/** Secondary parts of a review sit in collapsed sections so the summary and the review itself come first. */
+function foldSection(title, html, open = false) {
+  if (!html || !String(html).trim()) return '';
+  return `<details class="pl-more fold"${open ? ' open' : ''}><summary>${escapeHtml(title)}</summary><div class="pl-more-body">${html}</div></details>`;
+}
+
 function renderScorecard(data) {
   window._lastScorecardData = data;
   const score = data.overall_score || 0;
@@ -2810,21 +2816,14 @@ function renderScorecard(data) {
     ${renderReadiness(data)}
     ${renderPitchVersions(data)}
     ${renderRecap(data)}
-    <div class="scorecard-categories">${catHtml}</div>
-    ${renderVideoReplay(data)}
     ${reviewHtml}
     ${renderQaReview(data)}
-    ${renderRewrites(data)}
-    ${timelineHtml}
-    ${assetsHtml}
-    ${citationHtml}
-    ${renderFeedbackForm(data)}
-    <div class="recent-section">
-      <div class="sc-events-title">Recent Sessions</div>
-      <div id="recent-sessions" class="recent-sessions">
-        <div class="recent-empty">Loading recent sessions...</div>
-      </div>
-    </div>
+    ${foldSection('Score breakdown', `<div class="scorecard-categories">${catHtml}</div>`)}
+    ${foldSection('Video replay and timeline', renderVideoReplay(data) + timelineHtml)}
+    ${foldSection('Stronger versions of your lines', renderRewrites(data))}
+    ${foldSection('Research and sources', assetsHtml + citationHtml)}
+    ${foldSection('Give feedback on this review', renderFeedbackForm(data))}
+    ${foldSection('Recent sessions', `<div id="recent-sessions" class="recent-sessions"><div class="recent-empty">Loading recent sessions...</div></div>`)}
   `;
 
   scorecardPanel.classList.remove('hidden');

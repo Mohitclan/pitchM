@@ -7,129 +7,117 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261023c" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261023c" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261023c" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/bubble.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/meeting.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
 </head>
-<body class="mt-page">
+<body class="pl-page mt-page">
 
-  <header class="mt-header">
-    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> Pitchlight</a>
-    <span class="mt-header-tag">Meeting Mode</span>
-    <nav class="mt-header-links">
-      <a href="/prepare">Prepare me</a>
-      <a href="/company">Company hub</a>
-      <a href="/app">Practice app</a>
-      <a href="/app?view=history">History</a>
-      <a href="/guide">How to try it</a>
-      <span id="tester-slot"></span>
-    </nav>
-  </header>
+  <header class="pl-header" data-page="meeting"></header>
 
-  <main class="mt-main">
+  <main class="pl-main mt-main">
 
     <!-- Setup -->
-    <section id="mt-setup" class="mt-card mt-setup">
+    <section id="mt-setup" class="mt-setup">
+
       <div id="mt-practice" class="mt-practice hidden">
         <div class="mt-practice-text">
-          <b>Test mode: try a practice meeting first</b>
-          <span id="mt-practice-badge" class="mt-practice-badge hidden">Tested ✓</span>
-          <p>A built-in dummy client, Priya, asks 11 realistic questions out loud while you present a sample script. It runs
-            exactly like a real meeting, so you see every feature work: script follow-along, answers from documents,
-            objection cards, nudges, commitments and the final review. About 12 minutes. Nothing is added to your real
-            clients, documents or progress.</p>
+          <b>Try it first with the practice meeting</b>
+          <span id="mt-practice-badge" class="pl-chip is-ok hidden">Tested ✓</span>
+          <p>A built-in client, Priya, asks 11 realistic questions out loud while you present a sample script. Every feature
+            shows up exactly as in a real call. About 12 minutes. Nothing is added to your real clients, documents or progress.</p>
         </div>
-        <button id="mt-practice-btn" type="button" class="mt-btn mt-btn-primary">Start practice meeting</button>
-      </div>
-      <h1 class="mt-title">Your coach, inside any meeting</h1>
-      <p class="mt-sub">
-        A small floating coach bubble sits on top of Zoom, Google Meet, Teams or any call.
-        It listens to you and shows silent nudges only you can see. When the meeting ends,
-        the full transcript and review are saved to your History.
-      </p>
-
-      <div class="mt-fields">
-        <label class="mt-field">
-          <span>What's the meeting?</span>
-          <select id="mt-mode">
-            <option value="interview">Job interview</option>
-            <option value="pitch">Investor pitch</option>
-            <option value="sales_demo">Sales call / demo</option>
-            <option value="presentation">Presentation</option>
-            <option value="general">Other conversation</option>
-          </select>
-        </label>
-        <label class="mt-field">
-          <span>Where is it?</span>
-          <select id="mt-platform">
-            <option value="zoom">Zoom</option>
-            <option value="google_meet">Google Meet</option>
-            <option value="teams">Microsoft Teams</option>
-            <option value="webex">Webex</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-        <label class="mt-field">
-          <span>Coach style</span>
-          <select id="mt-persona">
-            <option value="coach">Professional Coach</option>
-            <option value="mentor">Supportive Mentor</option>
-            <option value="vc">Brutal VC</option>
-          </select>
-        </label>
-        <label class="mt-field">
-          <span>How chatty?</span>
-          <select id="mt-chatty">
-            <option value="quiet">Quiet — delivery flags only</option>
-            <option value="balanced" selected>Balanced — plus next moves &amp; objections</option>
-            <option value="active">Active — advice more often</option>
-          </select>
-        </label>
-        <label class="mt-toggle">
-          <input id="mt-camera" type="checkbox" checked />
-          <span>Use my camera to track eye contact</span>
-        </label>
+        <button id="mt-practice-btn" type="button" class="pl-btn is-accent">Start practice meeting</button>
       </div>
 
-      <details class="mt-brief" id="mt-brief">
-        <summary><b>Pre-call brief</b> (optional) — tell the coach what this meeting is about</summary>
-        <div class="mt-brief-grid">
-          <label class="mt-field mt-field-wide">
-            <span>Who is it with? <em>(client or company — the coach recalls your last call with them)</em></span>
-            <input id="mt-client" type="text" maxlength="80" list="mt-clients" autocomplete="off"
-              placeholder="Acme Retail" />
-            <datalist id="mt-clients"></datalist>
-          </label>
-          <div id="mt-last-call" class="mt-last-call mt-field-wide hidden" aria-live="polite"></div>
-          <label class="mt-field mt-field-wide" id="mt-business-field">
-            <span>Which company business is this about? <em>(its documents in the <a href="/company" target="_blank" rel="noopener">Company hub</a> are searched first)</em></span>
-            <select id="mt-business"><option value="">Not specific</option></select>
-          </label>
-          <label class="mt-field mt-field-wide">
-            <span>Script <em>(follows your voice in the Script tab — <a href="/prepare" target="_blank" rel="noopener">make one with Prepare me</a>)</em></span>
-            <select id="mt-script"><option value="">No script</option></select>
-          </label>
-          <label class="mt-field mt-field-wide mt-check">
-            <input id="mt-use-library" type="checkbox" />
-            <span>Answer from my documents <em id="mt-library-count">(none added yet)</em></span>
-          </label>
-          <label class="mt-field mt-field-wide">
-            <span>Context notes</span>
+      <div class="pl-card mt-start-card">
+        <h1 class="pl-h1">Start a meeting</h1>
+        <p class="pl-lead">Pitchlight floats a small notch on top of Zoom, Meet, Teams or any call and shows silent tips only you can see. Three quick things, then start.</p>
+
+        <div class="mt-steps">
+          <div class="mt-s">
+            <span class="mt-s-num">1</span>
+            <div class="mt-s-body">
+              <label class="pl-field"><span>Who is it with? <em>(optional: the coach recalls your last call with them)</em></span>
+                <input id="mt-client" type="text" maxlength="80" list="mt-clients" autocomplete="off" placeholder="Acme Retail" />
+                <datalist id="mt-clients"></datalist></label>
+              <div id="mt-last-call" class="mt-last-call hidden" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="mt-s">
+            <span class="mt-s-num">2</span>
+            <div class="mt-s-body">
+              <label class="pl-field"><span>Your script <em>(follows your voice · <a href="/prepare" target="_blank" rel="noopener">make one with Prepare me</a>)</em></span>
+                <select id="mt-script"><option value="">No script</option></select></label>
+            </div>
+          </div>
+          <div class="mt-s">
+            <span class="mt-s-num">3</span>
+            <div class="mt-s-body mt-other">
+              <div class="mt-other-text"><b>Hear the other person too</b> <span class="pl-chip is-accent">recommended</span>
+                <span>Pick your meeting's browser tab and tick “Share tab audio” (on Windows you can share the whole screen with system audio).
+                  Then the coach knows the questions you're answering.</span></div>
+              <div class="mt-other-row"><button id="mt-other-btn" type="button" class="pl-btn is-ghost is-sm">Choose meeting audio</button>
+                <span id="mt-other-status" class="mt-other-status">Not connected: only your voice will be coached.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-start-row">
+          <button id="mt-start" type="button" class="pl-btn is-accent is-lg">Start meeting coach</button>
+          <label class="pl-check"><input id="mt-camera" type="checkbox" checked /><span>Track my eye contact with the camera</span></label>
+        </div>
+        <p id="mt-error" class="mt-error hidden"></p>
+      </div>
+
+      <details class="pl-more" id="mt-brief">
+        <summary>More options <em>meeting type, notes, points to cover, prepared answers, rehearsal</em></summary>
+        <div class="pl-more-body">
+          <div class="pl-grid-2">
+            <label class="pl-field"><span>What's the meeting?</span>
+              <select id="mt-mode">
+                <option value="interview">Job interview</option>
+                <option value="pitch">Investor pitch</option>
+                <option value="sales_demo">Sales call / demo</option>
+                <option value="presentation">Presentation</option>
+                <option value="general">Other conversation</option>
+              </select></label>
+            <label class="pl-field"><span>Where is it?</span>
+              <select id="mt-platform">
+                <option value="zoom">Zoom</option>
+                <option value="google_meet">Google Meet</option>
+                <option value="teams">Microsoft Teams</option>
+                <option value="webex">Webex</option>
+                <option value="other">Other</option>
+              </select></label>
+            <label class="pl-field"><span>Coach style</span>
+              <select id="mt-persona">
+                <option value="coach">Professional Coach</option>
+                <option value="mentor">Supportive Mentor</option>
+                <option value="vc">Brutal VC</option>
+              </select></label>
+            <label class="pl-field"><span>How chatty?</span>
+              <select id="mt-chatty">
+                <option value="quiet">Quiet: delivery flags only</option>
+                <option value="balanced" selected>Balanced: plus next moves &amp; objections</option>
+                <option value="active">Active: advice more often</option>
+              </select></label>
+          </div>
+          <label class="pl-field" id="mt-business-field"><span>Which company business is this about? <em>(its documents in the <a href="/company" target="_blank" rel="noopener">Company hub</a> are searched first)</em></span>
+            <select id="mt-business"><option value="">Not specific</option></select></label>
+          <label class="pl-check mt-check"><input id="mt-use-library" type="checkbox" /><span>Answer from my documents <em id="mt-library-count">(none added yet)</em></span></label>
+          <label class="pl-field"><span>Context notes</span>
             <textarea id="mt-notes" rows="4" maxlength="6000"
-              placeholder="Client: Acme Retail (Priya, Head of Ops). Agenda: pricing for 40 stores, pilot timeline. They use spreadsheets today; worried about setup time."></textarea>
-          </label>
-          <label class="mt-field mt-field-wide">
-            <span>Points to cover <em>(one per line — leave empty and the coach picks them from your notes)</em></span>
+              placeholder="Client: Acme Retail (Priya, Head of Ops). Agenda: pricing for 40 stores, pilot timeline. They use spreadsheets today; worried about setup time."></textarea></label>
+          <label class="pl-field"><span>Points to cover <em>(one per line; leave empty and the coach picks them from your notes)</em></span>
             <textarea id="mt-points" rows="4" maxlength="2000"
-              placeholder="Per-store pricing and volume discount&#10;30-day pilot offer&#10;Setup takes under a day&#10;Agree next meeting date"></textarea>
-          </label>
-          <label class="mt-field mt-field-wide">
-            <span>Prepared answers to objections <em>(one per line, "Topic: answer")</em></span>
+              placeholder="Per-store pricing and volume discount&#10;30-day pilot offer&#10;Setup takes under a day&#10;Agree next meeting date"></textarea></label>
+          <label class="pl-field"><span>Prepared answers to objections <em>(one per line, "Topic: answer")</em></span>
             <textarea id="mt-objections" rows="3" maxlength="4000"
-              placeholder="Price: pays back in 3 months for a 40-store chain&#10;Competitor: we plug into Zoho, so nothing to replace&#10;Timing: the pilot takes one week, no IT work"></textarea>
-          </label>
-          <label class="mt-field">
-            <span>Planned length</span>
+              placeholder="Price: pays back in 3 months for a 40-store chain&#10;Competitor: we plug into Zoho, so nothing to replace&#10;Timing: the pilot takes one week, no IT work"></textarea></label>
+          <label class="pl-field mt-narrow"><span>Planned length</span>
             <select id="mt-minutes">
               <option value="0">Not sure</option>
               <option value="15">15 min</option>
@@ -137,54 +125,35 @@
               <option value="45">45 min</option>
               <option value="60">60 min</option>
               <option value="90">90 min</option>
-            </select>
-          </label>
-          <p class="mt-brief-help">The coach ticks off points as you cover them and reminds you of anything missed near the end.</p>
-        </div>
-        <div class="mt-rehearse" id="mt-rehearse">
-          <div class="mt-rehearse-head">
-            <div>
-              <b>Rehearse this call</b> <span class="mt-rehearse-tag">2 min</span>
-              <span class="mt-rehearse-sub">The AI plays the other side and asks the hardest questions from your brief. Answer out loud.</span>
+            </select></label>
+          <div class="mt-rehearse" id="mt-rehearse">
+            <div class="mt-rehearse-head">
+              <div>
+                <b>Rehearse this call</b> <span class="pl-chip">2 min</span>
+                <span class="mt-rehearse-sub">The AI plays the other side and asks the hardest questions from your brief. Answer out loud.</span>
+              </div>
+              <button id="mt-rehearse-btn" type="button" class="pl-btn is-ghost is-sm">Start rehearsal</button>
             </div>
-            <button id="mt-rehearse-btn" type="button" class="mt-btn mt-btn-ghost">Start rehearsal</button>
+            <div id="mt-rehearse-body" class="mt-rehearse-body hidden" aria-live="polite"></div>
           </div>
-          <div id="mt-rehearse-body" class="mt-rehearse-body hidden" aria-live="polite"></div>
         </div>
       </details>
 
-      <div class="mt-other">
-        <div class="mt-other-text">
-          <div><b>Hear the other person too</b> (recommended)</div>
-          <span>So the coach knows the questions you're answering. Pick your meeting's browser tab and tick
-          “Share tab audio”, or pick your whole screen with “Share system audio” on Windows.</span>
-        </div>
-        <button id="mt-other-btn" type="button" class="mt-btn mt-btn-ghost">Choose meeting audio</button>
-        <span id="mt-other-status" class="mt-other-status">Not connected — only your voice will be coached.</span>
-      </div>
-
-      <button id="mt-start" type="button" class="mt-btn mt-btn-primary">Start meeting coach</button>
-      <p id="mt-error" class="mt-error hidden"></p>
-
-      <ul class="mt-tips">
-        <li><strong>Wear headphones</strong> so the coach only hears you, not the other people.</li>
-        <li><strong>Drag the bubble</strong> anywhere on your screen — it stays on top of your call.</li>
-        <li><strong>Keep this tab open</strong> until the meeting ends. Use Chrome or Edge on a computer.</li>
-        <li>Nudges are <strong>text only</strong> — nobody in the call can hear or see them.</li>
-      </ul>
+      <p class="mt-tips-line"><b>Tips:</b> headphones keep the coach from hearing the other people · drag the notch anywhere · keep this tab open until the meeting ends · tips are text only, nobody else sees them · Chrome or Edge on a computer.</p>
     </section>
 
     <!-- Live / results -->
-    <section id="mt-live" class="mt-card mt-live hidden">
+    <section id="mt-live" class="pl-card mt-live hidden">
       <div class="mt-live-head">
         <span id="mt-live-status" class="mt-status">Connecting…</span>
         <span id="mt-live-timer" class="mt-timer">00:00</span>
       </div>
       <p id="mt-pip-note" class="mt-note"></p>
-      <button id="mt-reopen" type="button" class="mt-btn mt-btn-ghost hidden">Pop the bubble out again</button>
+      <button id="mt-reopen" type="button" class="pl-btn is-ghost is-sm hidden">Pop the bubble out again</button>
 
       <section id="mt-guide" class="mt-guide hidden" aria-live="polite"></section>
 
+      <div class="mt-panels">
       <div id="mt-points-panel" class="mt-points-panel hidden">
         <div class="mt-label">Points to cover <span id="mt-points-count" class="mt-points-count"></span></div>
         <ul id="mt-points-list" class="mt-points-list"></ul>
@@ -198,6 +167,7 @@
       <div id="mt-commit-panel" class="mt-points-panel mt-commit-panel hidden">
         <div class="mt-label">Commitments <span id="mt-commit-count" class="mt-points-count"></span></div>
         <ul id="mt-commit-list" class="mt-commit-list"></ul>
+      </div>
       </div>
 
       <div class="mt-live-grid">
@@ -214,7 +184,7 @@
       <div id="mt-result" class="mt-result hidden"></div>
 
       <div class="mt-live-actions">
-        <button id="mt-end" type="button" class="mt-btn mt-btn-danger">End meeting</button>
+        <button id="mt-end" type="button" class="pl-btn is-danger">End meeting</button>
       </div>
     </section>
 
@@ -340,12 +310,14 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261023c"></script>
-  <script src="/static/audio-leveler.js?v=20261023c"></script>
-  <script src="/static/gaze.js?v=20261023c"></script>
-  <script src="/static/rehearse.js?v=20261023c"></script>
-  <script src="/static/script-view.js?v=20261023c"></script>
-  <script src="/static/demo-meeting.js?v=20261023c"></script>
-  <script src="/static/meeting.js?v=20261023c"></script>
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
+  <script src="/static/js/audio-leveler.js?v=20261024a"></script>
+  <script src="/static/js/gaze.js?v=20261024a"></script>
+  <script src="/static/js/rehearse.js?v=20261024a"></script>
+  <script src="/static/js/script-view.js?v=20261024a"></script>
+  <script src="/static/js/demo-meeting.js?v=20261024a"></script>
+  <script src="/static/js/meeting.js?v=20261024a"></script>
 </body>
 </html>

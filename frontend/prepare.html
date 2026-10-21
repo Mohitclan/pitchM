@@ -7,57 +7,48 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/meeting.css?v=20261023b" />
-  <link rel="stylesheet" href="/static/prepare.css?v=20261023b" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261023b" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/prepare.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
 </head>
-<body class="mt-page">
-  <header class="mt-header">
-    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> Pitchlight</a>
-    <span class="mt-header-tag">Prepare me</span>
-    <nav class="mt-header-links">
-      <a href="/meeting">Meeting Mode</a>
-      <a href="/company">Company hub</a>
-      <a href="/app">Practice app</a>
-      <a href="/guide">How to try it</a>
-      <span id="tester-slot"></span>
-    </nav>
-  </header>
+<body class="pl-page">
+  <header class="pl-header" data-page="prepare"></header>
 
-  <main class="mt-main pp-main">
-    <section class="mt-card pp-card pp-practice-link">
+  <main class="pl-main pp-main">
+    <section class="pl-card pp-card pp-practice-link">
       <b>Want to just try Pitchlight first?</b> The practice meeting needs no set-up: a built-in client asks you questions and everything is pre-filled.
-      <a class="mt-btn mt-btn-primary" href="/meeting">Open the practice meeting</a>
+      <a class="pl-btn is-accent" href="/meeting">Open the practice meeting</a>
     </section>
 
-    <section class="mt-card pp-card">
+    <section class="pl-card pp-card">
       <h1 class="pp-h1">Get ready for your call</h1>
       <p class="pp-lead">Paste what you already have — a product page, an FAQ, your notes about the client. Pitchlight drafts your script, the hardest questions with answers, objection replies and a one-page cheat sheet. It only uses facts from your material and marks gaps as <code>[add: …]</code>.</p>
 
       <div class="pp-grid">
-        <label class="mt-field pp-wide"><span>Your material</span>
+        <label class="pl-field pp-wide"><span>Your material</span>
           <textarea id="pp-material" rows="9" maxlength="24000" placeholder="Paste text here: what the product does, pricing, FAQ, case studies, notes about this client…"></textarea></label>
-        <label class="mt-field"><span>Who is the call with?</span>
+        <label class="pl-field"><span>Who is the call with?</span>
           <input id="pp-client" type="text" maxlength="80" placeholder="Northwind Dental" /></label>
-        <label class="mt-field"><span>Goal of the call</span>
+        <label class="pl-field"><span>Goal of the call</span>
           <input id="pp-goal" type="text" maxlength="200" placeholder="Agree a 30-day pilot" /></label>
-        <label class="mt-field"><span>Length</span>
+        <label class="pl-field"><span>Length</span>
           <select id="pp-minutes"><option value="10">10 min</option><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
-        <label class="mt-field"><span>Language</span>
+        <label class="pl-field"><span>Language</span>
           <select id="pp-language"><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option><option>German</option></select></label>
-        <label class="mt-field mt-check pp-wide"><input id="pp-use-lib" type="checkbox" /><span>Also use my saved documents <em id="pp-lib-hint"></em></span></label>
+        <label class="pl-field pl-check pp-wide"><input id="pp-use-lib" type="checkbox" /><span>Also use my saved documents <em id="pp-lib-hint"></em></span></label>
       </div>
       <div class="pp-actions">
-        <button id="pp-draft" type="button" class="mt-btn mt-btn-primary">Draft my script</button>
-        <button id="pp-own" type="button" class="mt-btn mt-btn-ghost">Write my own script instead</button>
+        <button id="pp-draft" type="button" class="pl-btn is-accent">Draft my script</button>
+        <button id="pp-own" type="button" class="pl-btn is-ghost">Write my own script instead</button>
         <span id="pp-status" class="pp-status" role="status"></span>
       </div>
     </section>
 
-    <section id="pp-result" class="mt-card pp-card hidden">
+    <section id="pp-result" class="pl-card pp-card hidden">
       <div class="pp-result-head">
         <input id="pp-name" class="pp-name" type="text" maxlength="80" aria-label="Script name" />
-        <button id="pp-save" type="button" class="mt-btn mt-btn-primary">Save script</button>
+        <button id="pp-save" type="button" class="pl-btn is-accent">Save script</button>
       </div>
       <div id="pp-missing" class="pp-missing hidden"></div>
       <div class="pp-tabs" role="tablist">
@@ -78,11 +69,11 @@
     </section>
 
     <div class="pp-two">
-      <section class="mt-card pp-card">
+      <section class="pl-card pp-card">
         <h2 class="pp-h2">My scripts</h2>
         <ul id="pp-scripts" class="pp-list"></ul>
       </section>
-      <section class="mt-card pp-card">
+      <section class="pl-card pp-card">
         <h2 class="pp-h2">My documents</h2>
         <p class="pp-hint">Pricing sheets, FAQs, case studies. Answers in a live call use these and say where a fact came from. PDF, PowerPoint, Word, TXT or MD, up to 5 MB each. These are for this call or client; company-wide facts live in the <a href="/company">Company hub</a>.</p>
         <ul id="pp-docs" class="pp-list"></ul>
@@ -91,7 +82,7 @@
           <details><summary>or paste text</summary>
             <input id="pp-doc-title" type="text" maxlength="80" placeholder="Title, e.g. Pricing sheet" />
             <textarea id="pp-doc-text" rows="5" placeholder="Paste the document text"></textarea>
-            <button id="pp-doc-add" type="button" class="mt-btn mt-btn-ghost">Add document</button></details>
+            <button id="pp-doc-add" type="button" class="pl-btn is-ghost">Add document</button></details>
           <span id="pp-doc-status" class="pp-status" role="status"></span>
         </div>
       </section>
@@ -99,7 +90,9 @@
 
   </main>
 
-  <script src="/static/tester.js?v=20261023b"></script>
-  <script src="/static/prepare.js?v=20261023b"></script>
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
+  <script src="/static/js/prepare.js?v=20261024a"></script>
 </body>
 </html>

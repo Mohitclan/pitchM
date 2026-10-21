@@ -87,7 +87,7 @@ def test_pages_and_api_need_sign_in(env):
     assert c.get("/meeting").status_code == 302 and c.get("/pilot").status_code == 302
     assert c.get("/api/sessions").status_code == 401
     assert c.get("/api/goals").status_code == 401
-    for public in ("/", "/login", "/health", "/guide", "/api/config", "/auth/me", "/static/app.js"):
+    for public in ("/", "/login", "/health", "/guide", "/api/config", "/auth/me", "/static/js/app.js"):
         assert c.get(public).status_code == 200, public
     _register(c, "Ann Lee", "ann@acme.com")
     assert c.get("/app").status_code == 200 and c.get("/api/sessions").status_code == 200
@@ -127,7 +127,7 @@ def test_feedback_summary_and_pilot_page_are_admin_only(env):
     assert admin.get("/api/feedback/summary").status_code == 200 and admin.get("/pilot").status_code == 200
     assert member.get("/api/feedback/summary").status_code == 403
     r = member.get("/pilot")
-    assert r.status_code == 302 and r.headers["location"] == "/app"
+    assert r.status_code == 302 and r.headers["location"] == "/home"
 
 
 def test_admin_emails_setting_decides_who_is_admin(env, monkeypatch):

@@ -7,8 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/meeting.css?v=20261021c" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261021c" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
   <style>
     .pl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 18px 0; }
     .pl-stat { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: #fff; }
@@ -26,35 +27,28 @@
     .pl-empty { color: var(--muted); font-size: 14px; padding: 24px 0; }
     .pl-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .pl-wrap { overflow-x: auto; }
-    @media print { .mt-header, .pl-actions { display: none; } .mt-card { box-shadow: none; border: none; } }
+    @media print { .pl-header, .pl-actions { display: none; } .pl-card { box-shadow: none; border: none; } }
   </style>
 </head>
-<body class="mt-page">
-  <header class="mt-header">
-    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> Pitchlight</a>
-    <span class="mt-header-tag">Pilot feedback</span>
-    <nav class="mt-header-links">
-      <a href="/app">Practice app</a>
-      <a href="/meeting">Meeting Mode</a>
-      <a href="/guide">How to try it</a>
-      <span id="tester-slot"></span>
-    </nav>
-  </header>
+<body class="pl-page">
+  <header class="pl-header" data-page="pilot"></header>
 
-  <main class="mt-main">
-    <section class="mt-card">
-      <h1 class="mt-title">Pilot feedback</h1>
-      <p class="mt-sub">What testers said after their sessions on this device. Use it as evidence when you ask for approval.</p>
+  <main class="pl-main">
+    <section class="pl-card">
+      <h1 class="pl-h1">Pilot feedback</h1>
+      <p class="pl-lead">What testers said after their sessions on this device. Use it as evidence when you ask for approval.</p>
       <div class="pl-actions">
-        <button type="button" class="mt-btn mt-btn-ghost" id="pl-refresh">Refresh</button>
-        <button type="button" class="mt-btn mt-btn-ghost" id="pl-csv">Download CSV</button>
-        <button type="button" class="mt-btn mt-btn-ghost" onclick="window.print()">Print / save as PDF</button>
+        <button type="button" class="pl-btn is-ghost is-sm" id="pl-refresh">Refresh</button>
+        <button type="button" class="pl-btn is-ghost is-sm" id="pl-csv">Download CSV</button>
+        <button type="button" class="pl-btn is-ghost is-sm" onclick="window.print()">Print / save as PDF</button>
       </div>
       <div id="pl-body"><div class="pl-empty">Loading…</div></div>
     </section>
   </main>
 
-  <script src="/static/tester.js?v=20261021c"></script>
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
   <script>
   (function () {
     'use strict';

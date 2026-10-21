@@ -1,23 +1,7 @@
 /** Pitchlight — Prepare me: draft a call script from your material, edit it, save it; manage your documents. */
 (function () {
   'use strict';
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const USER_ID = (localStorage.getItem('pitchmirror_user_id') || '');
-  const headers = (json) => {
-    const h = { 'x-user-id': USER_ID };
-    const token = (localStorage.getItem('pitchmirror_api_token') || '').trim();
-    if (token) h.Authorization = `Bearer ${token}`;
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-  };
-  async function api(path, opts = {}) {
-    const resp = await fetch(path, { ...opts, headers: { ...headers(!!opts.json), ...(opts.headers || {}) }, body: opts.json ? JSON.stringify(opts.json) : opts.body });
-    let data = null;
-    try { data = await resp.json(); } catch (_) { /* empty */ }
-    if (!resp.ok) throw new Error((data && data.detail) || `Something went wrong (${resp.status})`);
-    return data;
-  }
+  const { api, esc, $ } = window.PL;
   const say = (el, text, err) => { el.textContent = text || ''; el.classList.toggle('err', !!err); };
 
   let prepared = null;      // the draft currently in the editor (carries minutes / client / mode)

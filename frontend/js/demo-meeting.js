@@ -38,8 +38,13 @@
       kit = await resp.json();
     } catch (_) { return; }
     $('mt-practice').classList.remove('hidden');
-    $('mt-practice').classList.toggle('is-new', !kit.completed);
+    $('mt-practice').classList.toggle('is-done', !!kit.completed);
     $('mt-practice-badge').classList.toggle('hidden', !kit.completed);
+    if (kit.completed) {
+      $('mt-practice-btn').textContent = 'Run it again';
+      $('mt-practice-btn').classList.remove('is-accent');
+      $('mt-practice-btn').classList.add('is-ghost');
+    }
     $('mt-practice-btn').addEventListener('click', begin);
     preload();
   }
@@ -59,7 +64,7 @@
     if (!kit) return;
     if (Object.keys(clips).length < kit.steps.length) {
       $('mt-practice-btn').textContent = 'Loading the client’s voice…';
-      setTimeout(() => $('mt-practice-btn').textContent = 'Start practice meeting', 2500);
+      setTimeout(() => { $('mt-practice-btn').textContent = kit.completed ? 'Run it again' : 'Start practice meeting'; }, 2500);
       return;
     }
     const set = (id, v) => { const el = $(id); if (el) el.value = v; };

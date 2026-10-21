@@ -7,28 +7,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261022e" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022a" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/style.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
 </head>
 <body>
   <div id="app">
 
     <!-- Header -->
-    <header class="site-header">
-      <a class="logo" href="/">
-        <span class="logo-mark">◎</span>
-        <span class="logo-name">Pitchlight</span>
-      </a>
-      <div id="session-timer" class="session-timer hidden">00:00</div>
-      <div class="header-right">
-        <span id="tester-slot"></span>
-        <a href="/prepare" class="header-meeting-link">Prepare me</a>
-        <a href="/company" class="header-meeting-link">Company hub</a>
-        <a href="/meeting" class="header-meeting-link">Meeting Mode</a>
-        <button id="btn-history" type="button" class="header-history-btn">History</button>
+    <header class="pl-header" data-page="practice">
+      <div class="pl-header-extra">
+        <div id="session-timer" class="session-timer hidden">00:00</div>
         <div id="status-badge" class="status-badge idle">Idle</div>
       </div>
     </header>
+    <button id="btn-history" type="button" hidden>History</button>
 
     <!-- Main layout -->
     <main>
@@ -68,6 +62,100 @@
           </button>
         </div>
 
+        <div class="session-config">
+          <div class="config-heading">Set up your session</div>
+          <label class="config-field">
+            <span class="config-label">What are you preparing for?</span>
+            <select id="coach-mode" class="config-select">
+              <option value="general">General Speaking</option>
+              <option value="presentation">Presentation</option>
+              <option value="interview">Interview</option>
+              <option value="sales_demo">Sales Demo</option>
+              <option value="pitch">Pitch</option>
+            </select>
+          </label>
+          <div class="config-field" id="partner-field">
+            <span class="config-label">Practice with</span>
+            <select id="practice-partner" class="config-select">
+              <option value="">Coach only (feedback while you talk)</option>
+              <option value="investor">Role-play: an investor asks questions</option>
+              <option value="interviewer">Role-play: an interviewer asks questions</option>
+              <option value="client">Role-play: a client asks questions</option>
+            </select>
+          <div id="partner-cards" class="partner-cards" role="radiogroup" aria-label="Practice with"></div>
+          </div>
+          <label class="config-field">
+            <span class="config-label">Script <em>(follows your voice — <a href="/prepare" target="_blank" rel="noopener">make one</a>)</em></span>
+            <select id="script-select" class="config-select"><option value="">No script</option></select>
+          </label>
+          <label class="config-field" id="business-field">
+            <span class="config-label">Company business <em>(its documents in the <a href="/company" target="_blank" rel="noopener">Company hub</a> are searched first)</em></span>
+            <select id="business-select" class="config-select"><option value="">Not specific</option></select>
+          </label>
+          <label class="config-toggle" id="use-library-field">
+            <input id="use-library" type="checkbox" />
+            <span>Answer from my documents <em id="library-count"></em></span>
+          </label>
+
+          <details class="pl-more config-more">
+            <summary>More options <em>coach style, goal, slides, recording</em></summary>
+            <div class="pl-more-body">
+          <label class="config-field">
+            <span class="config-label">Who is your coach today?</span>
+            <select id="coach-persona" class="config-select">
+              <option value="coach">Professional Coach</option>
+              <option value="vc">Brutal VC</option>
+              <option value="mentor">Supportive Mentor</option>
+            </select>
+          </label>
+          <label class="config-field">
+            <span class="config-label">Where will you deliver this?</span>
+            <select id="delivery-context" class="config-select">
+              <option value="virtual">Virtual</option>
+              <option value="in_person">In Person</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </label>
+          <label class="config-field">
+            <span class="config-label">Primary goal for this run?</span>
+            <select id="primary-goal" class="config-select">
+              <option value="balanced">Balanced improvement</option>
+              <option value="reduce_fillers">Reduce filler words</option>
+              <option value="improve_pacing">Improve pacing</option>
+              <option value="improve_confidence">Improve confidence</option>
+              <option value="improve_structure">Improve structure</option>
+            </select>
+          </label>
+          <label class="config-field">
+            <span class="config-label">Feedback</span>
+            <select id="feedback-mode" class="config-select">
+              <option value="live">Live — tips, checklist and advice while I talk</option>
+              <option value="end">Only at the end — no interruptions</option>
+            </select>
+          </label>
+          <label class="config-field">
+            <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
+            <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
+              autocomplete="off" placeholder="Billing Hub pitch" />
+            <datalist id="pitch-names"></datalist>
+          </label>
+          <label class="config-field" id="pitch-points-field">
+            <span class="config-label">Key points to hit <em>(one per line)</em></span>
+            <textarea id="pitch-points" class="config-select config-textarea" rows="3" maxlength="1500"
+              placeholder="Centralised payments for 30+ ventures&#10;Stripe + Razorpay routing&#10;Dashboard with churn"></textarea>
+          </label>
+          <label class="config-toggle" title="The recording stays in this browser on this computer — it is never uploaded">
+            <input id="record-video-toggle" type="checkbox" checked />
+            <span>Record video for replay <em>(stays on this device)</em></span>
+          </label>
+          <label class="config-toggle">
+            <input id="screen-share-toggle" type="checkbox" />
+            <span>Screen-aware coaching</span>
+          </label>
+          <label class="config-toggle" title="Reduces cooldowns for demonstration — enables more frequent coaching interruptions">
+            <input id="demo-mode-toggle" type="checkbox" />
+            <span>Deterministic demo mode</span>
+          </label>
         <div class="practice-deck">
           <div class="practice-deck-header">
             <span>Presentation Slides (Canva/PPT)</span>
@@ -90,108 +178,8 @@
           </div>
         </div>
 
-        <div class="session-config">
-          <div class="config-heading">Session Intake</div>
-          <label class="config-field">
-            <span class="config-label">Who is your coach today?</span>
-            <select id="coach-persona" class="config-select">
-              <option value="coach">Professional Coach</option>
-              <option value="vc">Brutal VC</option>
-              <option value="mentor">Supportive Mentor</option>
-            </select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">What are you preparing for?</span>
-            <select id="coach-mode" class="config-select">
-              <option value="general">General Speaking</option>
-              <option value="presentation">Presentation</option>
-              <option value="interview">Interview</option>
-              <option value="sales_demo">Sales Demo</option>
-              <option value="pitch">Pitch</option>
-            </select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Where will you deliver this?</span>
-            <select id="delivery-context" class="config-select">
-              <option value="virtual">Virtual</option>
-              <option value="in_person">In Person</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Primary goal for this run?</span>
-            <select id="primary-goal" class="config-select">
-              <option value="balanced">Balanced improvement</option>
-              <option value="reduce_fillers">Reduce filler words</option>
-              <option value="improve_pacing">Improve pacing</option>
-              <option value="improve_confidence">Improve confidence</option>
-              <option value="improve_structure">Improve structure</option>
-            </select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Practice with</span>
-            <select id="practice-partner" class="config-select">
-              <option value="">Coach only (feedback while you talk)</option>
-              <option value="investor">Role-play: an investor asks questions</option>
-              <option value="interviewer">Role-play: an interviewer asks questions</option>
-              <option value="client">Role-play: a client asks questions</option>
-            </select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Feedback</span>
-            <select id="feedback-mode" class="config-select">
-              <option value="live">Live — tips, checklist and advice while I talk</option>
-              <option value="end">Only at the end — no interruptions</option>
-            </select>
-          </label>
-
-          <label class="config-field" id="business-field">
-            <span class="config-label">Company business <em>(its documents in the <a href="/company" target="_blank" rel="noopener">Company hub</a> are searched first)</em></span>
-            <select id="business-select" class="config-select"><option value="">Not specific</option></select>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Script <em>(follows your voice — <a href="/prepare" target="_blank" rel="noopener">make one</a>)</em></span>
-            <select id="script-select" class="config-select"><option value="">No script</option></select>
-          </label>
-
-          <label class="config-toggle" id="use-library-field">
-            <input id="use-library" type="checkbox" />
-            <span>Answer from my documents <em id="library-count"></em></span>
-          </label>
-
-          <label class="config-field">
-            <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
-            <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
-              autocomplete="off" placeholder="Billing Hub pitch" />
-            <datalist id="pitch-names"></datalist>
-          </label>
-
-          <label class="config-field" id="pitch-points-field">
-            <span class="config-label">Key points to hit <em>(one per line)</em></span>
-            <textarea id="pitch-points" class="config-select config-textarea" rows="3" maxlength="1500"
-              placeholder="Centralised payments for 30+ ventures&#10;Stripe + Razorpay routing&#10;Dashboard with churn"></textarea>
-          </label>
-
-          <label class="config-toggle" title="The recording stays in this browser on this computer — it is never uploaded">
-            <input id="record-video-toggle" type="checkbox" checked />
-            <span>Record video for replay <em>(stays on this device)</em></span>
-          </label>
-
-          <label class="config-toggle">
-            <input id="screen-share-toggle" type="checkbox" />
-            <span>Screen-aware coaching</span>
-          </label>
-
-          <label class="config-toggle" title="Reduces cooldowns for demonstration — enables more frequent coaching interruptions">
-            <input id="demo-mode-toggle" type="checkbox" />
-            <span>Deterministic demo mode</span>
-          </label>
+            </div>
+          </details>
         </div>
 
         <!-- Agent telemetry bar — shows live tool/agent calls for judges -->
@@ -391,11 +379,14 @@
     </div>
   </div>
 
-  <script src="/static/tester.js?v=20261022a"></script>
-  <script src="/static/audio-leveler.js?v=20261022a"></script>
-  <script src="/static/gaze.js?v=20261022a"></script>
-  <script src="/static/rehearse.js?v=20261022a"></script>
-  <script src="/static/script-view.js?v=20261022e"></script>
-  <script src="/static/app.js?v=20261022e"></script>
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
+  <script src="/static/js/audio-leveler.js?v=20261024a"></script>
+  <script src="/static/js/gaze.js?v=20261024a"></script>
+  <script src="/static/js/rehearse.js?v=20261024a"></script>
+  <script src="/static/js/script-view.js?v=20261024a"></script>
+  <script src="/static/js/app.js?v=20261024a"></script>
+  <script src="/static/js/practice-ui.js?v=20261024a"></script>
 </body>
 </html>

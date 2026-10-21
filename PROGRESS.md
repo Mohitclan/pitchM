@@ -589,3 +589,33 @@ Problem reported: while answering Priya, the script raced to its last line and f
   model call. The practice meeting has one (step 8, setup for many clinics), now "read it, then carry on".
 - Live check (real models): answering a price question with price/pilot wording left the script at line 1; the answer card
   gave a ready sentence citing the hub (no setup fee for 22 clinics). 131 tests.
+
+## UI and front-end architecture redesign — 2026-10-24 (backend untouched, split left for later)
+Goal: fewer buttons and sections per screen, one look and one navigation everywhere.
+- **Design system**: `frontend/css/tokens.css` (single source for colours, type, radius, shadows, header height) and
+  `css/components.css` (header + nav, buttons `.pl-btn`, cards, fields, chips, tabs, numbered steps, "More options"
+  accordion). The duplicated `:root` blocks in `style.css` / `meeting.css` are gone; old names stay as aliases.
+  One light theme (the notch stays dark); sign-in page no longer switches to dark mode.
+- **One header on every page** (`js/nav.js`, `<header class="pl-header" data-page="…">`): Home · Meeting · Practice ·
+  Library ▾ (Prepare me, Company hub) · History · Help · user chip. Current page highlighted; the landing page shows only
+  logo + How it works + Sign in. Also injects one favicon (removes the `/favicon.ico` 404). Shared helpers in
+  `js/common.js` (`window.PL`: `api`, `esc`, `headers`, `userId`) replace copies in page scripts.
+- **Home** (`/home`, `home.html|js`, `css/home.css`): after sign-in (login default `next`, `/login` when signed in, and
+  non-admin `/pilot` now go there): 3 numbered steps (practice meeting → prepare → start a meeting) with done/next state,
+  shortcuts, recent calls (practice runs tagged).
+- **Meeting set-up**: a "Start a meeting" card with three things (who, script, hear the other person) + Start +
+  camera toggle. Meeting type, platform, coach style, chattiness, business, documents, notes, points, objections,
+  length and rehearsal moved under **More options** (same element ids, JS unchanged). Practice-meeting strip collapses
+  to "Tested ✓ · Run it again" once done. Live page: points / facts / commitments sit in one responsive row.
+- **Practice app**: "Set up your session" shows only what you are preparing for, **Practice with** as four clickable
+  cards (`js/practice-ui.js`, the select stays the value holder), script, business, documents; coach style, delivery
+  context, goal, feedback mode, pitch name/points, slides, recording, screen-aware and demo mode are under More options.
+  Review: summary, readiness, recap, review and Q&A first; score breakdown, video replay, rewrites, research,
+  feedback and recent sessions are collapsed sections (`foldSection`).
+- **Landing**: 1,109 lines → 95 (`landing.html` + `css/landing.css`): hero with a live example of a "Say this" answer,
+  three steps, six benefits, solo practice, one CTA. Guide rewritten for the current flow.
+- **Files**: `frontend/css/` and `frontend/js/` folders (all references and tests updated); pages stay at the root.
+- Found and fixed while re-testing live: a prepared answer matched a different question on two shared words (price
+  question got the setup answer). `_prepared_answer` now needs ≥3 shared words (or all) and ≥60%. 132 tests.
+- Not done (by decision): backend `main.py` router split; splitting `app.js` (3.8k lines) / `meeting.js` (1.8k) into
+  modules, which needs a careful pass because of shared closure state.

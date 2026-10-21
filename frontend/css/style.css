@@ -5,62 +5,7 @@
  * Palette: White surfaces · deep blue accent · clean shadows
  */
 
-/* ── Variables ──────────────────────────────────── */
-:root {
-  /* Surfaces */
-  --bg:        #f9fafb;
-  --surface:   #ffffff;
-  --surface-2: #f3f4f6;
-  --surface-3: #e9ebf0;
-  --border:    #e5e7eb;
-  --border-hi: #d1d5db;
-
-  /* Accent — deep blue */
-  --accent:      #1d4ed8;
-  --accent-dim:  rgba(29, 78, 216, 0.08);
-  --accent-hi:   #2563eb;
-  --accent-glow: rgba(29, 78, 216, 0.18);
-
-  /* Aliases used by JS/HTML (accent replaces amber) */
-  --amber:      #2563eb;
-  --amber-dim:  rgba(37, 99, 235, 0.08);
-  --amber-glow: rgba(37, 99, 235, 0.18);
-
-  /* Coach — violet */
-  --coach:     #7c3aed;
-  --coach-dim: rgba(124, 58, 237, 0.08);
-
-  /* User speech — sky */
-  --teal:     #0284c7;
-  --teal-dim: rgba(2, 132, 199, 0.08);
-
-  /* Semantic */
-  --success:    #16a34a;
-  --warn:       #d97706;
-  --danger:     #dc2626;
-  --danger-dim: rgba(220, 38, 38, 0.08);
-
-  /* Text */
-  --text:           #0d1117;
-  --text-secondary: #4a5268;
-  --text-muted:     #8892a8;
-
-  /* Typography */
-  --font-display: 'Bricolage Grotesque', sans-serif;
-  --font-ui:      'Manrope', sans-serif;
-  --font-body:    'Manrope', sans-serif;
-  --font-mono:    'IBM Plex Mono', monospace;
-
-  /* Shape */
-  --radius:    12px;
-  --radius-sm: 8px;
-  --radius-xs: 4px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.04);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
-  --shadow-lg: 0 8px 28px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.06);
-}
+/* Colours, type, shape and shadows come from tokens.css. */
 
 /* ── Reset ──────────────────────────────────────── */
 *, *::before, *::after {
@@ -2205,3 +2150,18 @@ input.config-select { font-weight: 500; }
 .ready-sections { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 .ready-sections span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border, rgba(255,255,255,0.15)); }
 .ready-sections .skip { border-color: #f87171; color: #f87171; }
+
+/* ── Set-up panel (practice): quick choices first, the rest under "More options" ── */
+.session-config { display: flex; flex-direction: column; gap: 14px; }
+.config-more { margin-top: 2px; }
+.config-more .pl-more-body { gap: 12px; }
+.partner-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.partner-card { text-align: left; font: inherit; cursor: pointer; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-hi); background: var(--surface); color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.partner-card b { font-size: 13.5px; }
+.partner-card span { font-size: 12px; color: var(--text-secondary); line-height: 1.35; }
+.partner-card:hover { border-color: var(--accent); }
+.partner-card.is-on { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 0 2px var(--accent-dim); }
+#practice-partner:disabled ~ .partner-cards { opacity: .55; pointer-events: none; }
+
+.pl-more.fold { margin: 12px 0; }
+.pl-more.fold .pl-more-body { display: block; }

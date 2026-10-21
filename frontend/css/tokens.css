@@ -1,0 +1,71 @@
+/*
+ * Pitchlight design tokens: the one place for colours, type, shape and shadows.
+ * Every page loads this first. Old names (--text-2, --muted, --font-d, …) stay as aliases so existing styles keep working.
+ */
+:root {
+  /* Surfaces */
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #e9ebf0;
+  --border: #e5e7eb;
+  --border-hi: #d1d5db;
+
+  /* Brand */
+  --accent: #1d4ed8;
+  --accent-hi: #2563eb;
+  --accent-dim: rgba(29, 78, 216, 0.08);
+  --accent-glow: rgba(29, 78, 216, 0.18);
+  --coach: #7c3aed;
+  --coach-dim: rgba(124, 58, 237, 0.08);
+  --teal: #0284c7;
+  --teal-dim: rgba(2, 132, 199, 0.08);
+
+  /* Semantic */
+  --success: #16a34a;
+  --ok: #16a34a;
+  --ok-dim: rgba(22, 163, 74, 0.1);
+  --warn: #d97706;
+  --warn-dim: rgba(217, 119, 6, 0.1);
+  --danger: #dc2626;
+  --danger-dim: rgba(220, 38, 38, 0.08);
+
+  /* Legacy aliases (practice app uses amber for the blue accent) */
+  --amber: #2563eb;
+  --amber-dim: rgba(37, 99, 235, 0.08);
+  --amber-glow: rgba(37, 99, 235, 0.18);
+
+  /* Text */
+  --text: #0d1117;
+  --text-2: #4a5268;
+  --text-secondary: #4a5268;
+  --muted: #7b869c;
+  --text-muted: #7b869c;
+
+  /* Type */
+  --font-d: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-b: 'Manrope', system-ui, sans-serif;
+  --font-m: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: var(--font-d);
+  --font-ui: var(--font-b);
+  --font-body: var(--font-b);
+  --font-mono: var(--font-m);
+
+  /* Shape and depth */
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-xs: 4px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+
+  /* Layout */
+  --header-h: 58px;
+  --page-max: 1040px;
+
+  /* Coach notch (dark) */
+  --pm-bg: rgba(15, 18, 28, 0.92);
+  --pm-text: #f5f7fb;
+  --pm-muted: #a3acc2;
+  --pm-line: rgba(255, 255, 255, 0.1);
+}

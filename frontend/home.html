@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pitchlight — Home</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/home.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
+</head>
+<body class="pl-page">
+  <header class="pl-header" data-page="home"></header>
+
+  <main class="pl-main">
+    <section>
+      <h1 class="pl-h1" id="hm-title">Welcome to Pitchlight</h1>
+      <p class="pl-lead">Three steps to go from first visit to a confident real call. Do them once, then just start meetings.</p>
+    </section>
+
+    <section class="pl-steps" id="hm-steps" aria-label="Get ready">
+      <div class="pl-step" id="hm-step-1">
+        <span class="pl-step-num">1</span>
+        <div><h3>Try the practice meeting</h3><p id="hm-s1-text">A built-in client asks you 11 questions while you see every feature work. About 12 minutes, nothing is saved to your real data.</p></div>
+        <a class="pl-btn is-accent" id="hm-s1-btn" href="/meeting">Start practice</a>
+      </div>
+      <div class="pl-step" id="hm-step-2">
+        <span class="pl-step-num">2</span>
+        <div><h3>Prepare your call</h3><p id="hm-s2-text">Paste a product page or your notes and get a script, hard questions with answers and a cheat sheet.</p></div>
+        <a class="pl-btn is-ghost" id="hm-s2-btn" href="/prepare">Prepare me</a>
+      </div>
+      <div class="pl-step" id="hm-step-3">
+        <span class="pl-step-num">3</span>
+        <div><h3>Start a meeting</h3><p>The coach floats on top of your call, follows your script and answers client questions from your documents.</p></div>
+        <a class="pl-btn is-ghost" id="hm-s3-btn" href="/meeting">Start a meeting</a>
+      </div>
+    </section>
+
+    <section class="hm-grid">
+      <a class="pl-card hm-tile" href="/app"><b>Practice a pitch</b><span>Rehearse alone or with an AI investor, interviewer or client. Full review afterwards.</span></a>
+      <a class="pl-card hm-tile" href="/company"><b>Company hub</b><span id="hm-company-text">Shared product knowledge the coach uses to answer client questions.</span></a>
+      <a class="pl-card hm-tile" href="/guide"><b>How it works</b><span>A two-minute guide to every feature and the best set-up.</span></a>
+    </section>
+
+    <section class="pl-card">
+      <div class="hm-head"><h2 class="pl-h2">Recent calls</h2><a class="pl-link" href="/app?view=history">See all</a></div>
+      <ul class="hm-list" id="hm-recent"><li class="hm-empty">Loading…</li></ul>
+    </section>
+  </main>
+
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
+  <script src="/static/js/home.js?v=20261024a"></script>
+</body>
+</html>

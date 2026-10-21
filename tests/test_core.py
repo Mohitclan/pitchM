@@ -1059,7 +1059,7 @@ def test_audio_leveler_boosts_quiet_and_tames_loud():
         pytest.skip("node not installed")
     script = textwrap.dedent("""
         const fs = require('fs');
-        const src = fs.readFileSync('frontend/audio-leveler.js', 'utf8');
+        const src = fs.readFileSync('frontend/js/audio-leveler.js', 'utf8');
         const code = src.match(/const WORKLET_CODE = `([\\s\\S]*?)`;/)[1];
         let Proc;
         global.AudioWorkletProcessor = class { constructor() { this.port = { postMessage: (m) => out.push(m) }; } };

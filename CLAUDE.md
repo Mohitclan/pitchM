@@ -35,7 +35,7 @@ PitchMirror is an **AI speaking coach**. It listens while you talk, gives short 
    commitments tracker, past-call memory per client, pre-call rehearsal (`/ws?kind=rehearsal`), recap export
    (Markdown / webhook), progress charts + practice goals in History, clickable replay markers, side-by-side
    "stronger version" with read-aloud and retry. Helpers in `backend/coach_extras.py`, shared mic/voice code in
-   `frontend/rehearse.js`.
+   `frontend/js/rehearse.js`.
    Later the same day: live **facts card** (meeting), **pitch versions** with comparison, local **video replay**
    (IndexedDB, never uploaded) and an **AI role-play partner** (`?roleplay=investor|interviewer|client`) in practice.
    Then **live advice**: meeting "How chatty?" (`?chatty=quiet|balanced|active`) with next-move / missed-question /
@@ -74,7 +74,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   - `backend/session_state.py`: transcript merging, metrics, Q&A extraction, gaze streaks.
   - `backend/meeting_brief.py`: brief and coverage prompts.
   - `backend/db.py`: SQLite (sessions, user_profiles, feedback).
-  - `frontend/meeting.js`, `bubble.css` (the notch), `meeting.css` (page only), `app.js`, `gaze.js`, `tester.js`.
+  - Frontend layout (2026-10-24 redesign): `frontend/*.html` pages, `css/tokens.css` (all design tokens) + `css/components.css` (header, buttons, cards, forms, chips, steps, accordions) + one css file per page, `js/common.js` (`window.PL`: api/esc/headers) + `js/nav.js` (the one shared header, built from `<header class="pl-header" data-page="…">`) + `js/<page>.js`. Notch: `css/bubble.css`; meeting page `css/meeting.css`, `js/meeting.js`; practice `js/app.js`, `js/practice-ui.js`; `js/gaze.js`, `js/tester.js`, `js/script-view.js`, `js/demo-meeting.js`.
 
 ### WebSocket protocol (`/ws?kind=practice|meeting&…`)
 - **Binary frames, first byte:** `0x01` mic PCM, `0x02` video, `0x03` stop, `0x04` screen, `0x05` slide, `0x06` meeting (other) audio, `0x10` coach audio (server→client).

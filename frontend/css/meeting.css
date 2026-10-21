@@ -1,99 +1,42 @@
-/* Pitchlight — Meeting Mode page + floating coach bubble */
+/* Pitchlight: Meeting Mode page (tokens and shared components live in tokens.css / components.css; the notch in bubble.css) */
 
-:root {
-  --bg: #f9fafb;
-  --surface: #ffffff;
-  --surface-2: #f3f4f6;
-  --border: #e5e7eb;
-  --border-hi: #d1d5db;
-  --text: #0d1117;
-  --text-2: #4a5268;
-  --muted: #8892a8;
-  --accent: #1d4ed8;
-  --accent-dim: rgba(29, 78, 216, 0.08);
-  --coach: #7c3aed;
-  --coach-dim: rgba(124, 58, 237, 0.08);
-  --teal: #0284c7;
-  --ok: #16a34a;
-  --warn: #d97706;
-  --danger: #dc2626;
-  --radius: 14px;
-  --font-d: 'Bricolage Grotesque', sans-serif;
-  --font-b: 'Manrope', system-ui, sans-serif;
-  --font-m: 'IBM Plex Mono', ui-monospace, monospace;
-
-  /* bubble */
-  --pm-bg: rgba(15, 18, 28, 0.92);
-  --pm-text: #f5f7fb;
-  --pm-muted: #a3acc2;
-  --pm-line: rgba(255, 255, 255, 0.1);
-}
-
-* { box-sizing: border-box; }
-.hidden { display: none !important; }
-
-.mt-page {
-  margin: 0;
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-b);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ── Header ── */
-.mt-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 58px;
-  padding: 0 24px;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.mt-logo { display: flex; align-items: center; gap: 8px; font-family: var(--font-d); font-weight: 700; font-size: 17px; color: var(--text); text-decoration: none; }
-.mt-logo-mark { color: var(--accent); }
-.mt-header-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--coach); background: var(--coach-dim); border-radius: 20px; padding: 3px 10px; }
-.mt-header-links { margin-left: auto; display: flex; gap: 18px; }
-.mt-header-links a { font-size: 13px; font-weight: 600; color: var(--text-2); text-decoration: none; }
-.mt-header-links a:hover { color: var(--accent); }
-
-/* ── Layout ── */
-.mt-main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
-.mt-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.04);
-  padding: 28px;
-}
-.mt-title { font-family: var(--font-d); font-size: clamp(24px, 4vw, 34px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.5px; }
-.mt-sub { color: var(--text-2); font-size: 15px; line-height: 1.6; margin: 0 0 22px; max-width: 640px; }
-
-.mt-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
-.mt-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.mt-field select {
-  font: inherit; font-size: 14px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text);
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
-}
-.mt-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); align-self: end; padding-bottom: 10px; }
-
-.mt-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font: inherit; font-size: 14px; font-weight: 700; text-decoration: none;
-  border-radius: 999px; padding: 12px 24px; border: 1px solid transparent; cursor: pointer;
-}
-.mt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.mt-btn-primary { background: var(--text); color: #fff; }
-.mt-btn-primary:hover:not(:disabled) { opacity: 0.85; }
+/* Old button names are still produced by meeting.js, so they share the shared button look. */
+.mt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; text-decoration: none; white-space: nowrap;
+  font: inherit; font-size: 14.5px; font-weight: 700; padding: 11px 20px; border-radius: 999px; border: 1px solid transparent; background: var(--text); color: #fff; }
+.mt-btn:hover:not(:disabled) { opacity: .88; }
+.mt-btn:disabled { opacity: .5; cursor: not-allowed; }
+.mt-btn-primary { background: var(--accent); }
 .mt-btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border-hi); }
-.mt-btn-danger { background: var(--danger); color: #fff; }
+.mt-btn-danger { background: var(--danger); }
+.mt-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 24px; }
+.mt-error { color: var(--danger); font-size: 13.5px; margin: 12px 0 0; }
 
-.mt-error { color: var(--danger); font-size: 13px; margin: 12px 0 0; }
-.mt-tips { margin: 22px 0 0; padding: 16px 18px 16px 34px; background: var(--surface-2); border-radius: 12px; color: var(--text-2); font-size: 13px; line-height: 1.75; }
+/* ── Start screen ── */
+.mt-setup { display: flex; flex-direction: column; gap: 16px; }
+.mt-start-card { display: flex; flex-direction: column; gap: 18px; }
+.mt-steps { display: grid; gap: 14px; }
+.mt-s { display: grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: start; }
+.mt-s-num { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); color: var(--text-2); font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.mt-s-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.mt-other { border: 1px dashed var(--border-hi); border-radius: 12px; padding: 12px 14px; }
+.mt-other-text { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.mt-other-text .pl-chip { align-self: flex-start; }
+.mt-other-text span:not(.pl-chip) { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.mt-other-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.mt-other-status { font-size: 13px; color: var(--muted); }
+.mt-other-status.ok { color: var(--ok); font-weight: 700; }
+.mt-other-status.bad { color: var(--danger); }
+.mt-start-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; }
+.mt-narrow { max-width: 240px; }
+.mt-tips-line { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.mt-last-call { border: 1px solid rgba(2, 132, 199, 0.3); background: rgba(2, 132, 199, 0.05); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--text-2); }
+.mt-practice { display: flex; gap: 18px; align-items: center; justify-content: space-between; padding: 16px 20px;
+  border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-dim); }
+.mt-practice.is-done { border-color: var(--border-hi); background: var(--surface-2); }
+.mt-practice-text b { margin-right: 8px; }
+.mt-practice p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+.mt-practice.is-done p { display: none; }
+@media (max-width: 760px) { .mt-practice { flex-direction: column; align-items: flex-start; } }
 
 /* ── Live ── */
 .mt-live-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
@@ -134,15 +77,6 @@
 }
 
 /* Other-participant audio */
-.mt-other {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
-  padding: 14px 16px; margin: 0 0 18px; border: 1px dashed var(--border-hi); border-radius: 12px;
-}
-.mt-other-text { flex: 1 1 320px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
-.mt-other-text span { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
-.mt-other-status { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
-.mt-other-status.ok { color: var(--ok); font-weight: 600; }
-.mt-other-status.bad { color: var(--danger); }
 .mt-line.is-them .mt-line-text { color: var(--text-2); }
 .mt-line-who { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding-top: 3px; flex-shrink: 0; width: 34px; }
 .mt-line.is-you .mt-line-who { color: var(--teal); }
@@ -169,7 +103,8 @@
 .mt-brief-help { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--muted); }
 @media (max-width: 720px) { .mt-brief-grid { grid-template-columns: minmax(0, 1fr); } }
 
-.mt-points-panel { margin: 4px 0 10px; }
+.mt-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 18px; margin: 6px 0 4px; }
+.mt-points-panel { margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .mt-points-count { font-weight: 700; color: var(--accent); text-transform: none; letter-spacing: 0; }
 .mt-points-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .mt-points-list li {
@@ -262,13 +197,6 @@
 .mt-check span { margin: 0; }
 
 /* ── Practice meeting (test mode) ── */
-.mt-practice { display: flex; gap: 18px; align-items: center; justify-content: space-between; padding: 16px 18px; margin: 0 0 18px;
-  border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--surface-2); }
-.mt-practice.is-new { border-color: var(--accent); background: var(--accent-dim); }
-.mt-practice p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
-.mt-practice-badge { margin-left: 8px; font-size: 11px; font-weight: 800; color: var(--ok); background: rgba(22, 163, 74, 0.12); border-radius: 999px; padding: 2px 9px; }
-.mt-practice .mt-btn { white-space: nowrap; }
-@media (max-width: 760px) { .mt-practice { flex-direction: column; align-items: flex-start; } }
 .mt-guide { margin: 14px 0 18px; padding: 16px 18px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface); }
 .mg-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
 .mg-sub { color: var(--muted); font-size: 13px; font-weight: 600; }

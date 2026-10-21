@@ -733,7 +733,7 @@ async def http_hardening_middleware(request: Request, call_next):
         if path in _ADMIN_PATHS and not accounts.is_admin(user):
             if path.startswith("/api"):
                 return JSONResponse(status_code=403, content={"detail": "Admins only"})
-            return RedirectResponse(url="/app", status_code=302)
+            return RedirectResponse(url="/home", status_code=302)
     elif _auth_required_for_path(path):
         token = _extract_auth_token(
             request.headers.get("authorization"),
@@ -775,8 +775,13 @@ _NO_CACHE = {"Cache-Control": "no-cache"}
 @app.get("/login")
 async def login_page(request: Request):
     if AUTH_ACCOUNTS and getattr(request.state, "user", None):
-        return RedirectResponse(url="/app", status_code=302)
+        return RedirectResponse(url="/home", status_code=302)
     return FileResponse("frontend/login.html", headers=_NO_CACHE)
+
+
+@app.get("/home")
+async def home_page():
+    return FileResponse("frontend/home.html", headers=_NO_CACHE)
 
 
 @app.get("/app")
@@ -2013,7 +2018,7 @@ def _prepared_answer(state: SessionState, question: str) -> dict | None:
             continue
         shared = len(q & t)
         score = shared / len(t)
-        if shared >= min(2, len(t)) and score >= 0.5 and score > best_score:
+        if shared >= min(3, len(t)) and score >= 0.6 and score > best_score:
             best, best_score = item, score
     return best
 

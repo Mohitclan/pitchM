@@ -7,36 +7,28 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/meeting.css?v=20261022f" />
-  <link rel="stylesheet" href="/static/prepare.css?v=20261022f" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022f" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/prepare.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
 </head>
-<body class="mt-page">
-  <header class="mt-header">
-    <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> Pitchlight</a>
-    <span class="mt-header-tag">Company hub</span>
-    <nav class="mt-header-links">
-      <a href="/prepare">Prepare me</a>
-      <a href="/meeting">Meeting Mode</a>
-      <a href="/app">Practice app</a>
-      <span id="tester-slot"></span>
-    </nav>
-  </header>
+<body class="pl-page">
+  <header class="pl-header" data-page="company"></header>
 
-  <main class="mt-main pp-main">
-    <section class="mt-card pp-card">
+  <main class="pl-main pp-main">
+    <section class="pl-card pp-card">
       <h1 class="pp-h1">Company knowledge hub</h1>
       <p class="pp-lead">One place for everything the company sells, grouped by business. During a call, if the presenter's own documents don't cover what the client asks, the coach answers from here and names the document it used. Pick the business a call is about in the Meeting or Practice setup and that business's documents are searched first. If a client asks about a business you didn't pick, the coach finds it here anyway.
         <b id="cp-role"></b></p>
       <div id="cp-add-business" class="cp-add-business hidden">
         <h3 class="pp-h3">Add a business</h3>
-        <label class="mt-field"><span>Business name</span>
+        <label class="pl-field"><span>Business name</span>
           <input id="cp-name" type="text" maxlength="60" placeholder="Billing Hub" /></label>
-        <label class="mt-field"><span>What it does <em>(a short paragraph: who it's for, the problem it solves, how it's sold)</em></span>
+        <label class="pl-field"><span>What it does <em>(a short paragraph: who it's for, the problem it solves, how it's sold)</em></span>
           <textarea id="cp-desc" rows="4" maxlength="1500" placeholder="Billing Hub centralises patient payments and insurance claims for dental and medical clinics. Clinics pay per location per month…"></textarea></label>
-        <label class="mt-field"><span>Decks and documents <em>(optional now, add more any time · PDF, PowerPoint, Word, TXT, MD)</em></span>
+        <label class="pl-field"><span>Decks and documents <em>(optional now, add more any time · PDF, PowerPoint, Word, TXT, MD)</em></span>
           <input id="cp-files" type="file" multiple accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" /></label>
-        <div><button id="cp-add" type="button" class="mt-btn mt-btn-primary">Add business</button></div>
+        <div><button id="cp-add" type="button" class="pl-btn is-accent">Add business</button></div>
       </div>
       <span id="cp-status" class="pp-status" role="status"></span>
     </section>
@@ -44,7 +36,9 @@
     <div id="cp-list" class="cp-list"></div>
   </main>
 
-  <script src="/static/tester.js?v=20261022f"></script>
-  <script src="/static/company.js?v=20261022f"></script>
+  <script src="/static/js/common.js?v=20261024a"></script>
+  <script src="/static/js/nav.js?v=20261024a"></script>
+  <script src="/static/js/tester.js?v=20261024a"></script>
+  <script src="/static/js/company.js?v=20261024a"></script>
 </body>
 </html>

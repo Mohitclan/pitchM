@@ -106,3 +106,13 @@ def test_script_does_not_jump_while_answering_a_client_question():
     st.last_client_question_at = -1e9
     m._script_feed(st, "I will show you how Billing Hub puts every clinic payment and insurance claim in one dashboard")
     assert st.script_follower.pos >= 1                                 # reading on works as before
+
+
+def test_prepared_answer_needs_most_of_the_question_not_two_shared_words():
+    import backend.main as m
+    from backend.session_state import SessionState
+    st = SessionState(session_id="s", user_id="u", practice_meeting=True)
+    st.hard_questions = list(demo_kit.HARD_QUESTIONS)
+    # shares only "setup" and "clinic" with the prepared setup question: must NOT use that answer
+    assert m._prepared_answer(st, "How much does Billing Hub cost per clinic, and is there a setup fee?") is None
+    assert m._prepared_answer(st, "How would the setup work for 22 clinics?") is not None
