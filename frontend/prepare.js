@@ -150,50 +150,6 @@
     } catch (e) { say($('pp-doc-status'), e.message, true); }
   });
 
-  /* ── Company knowledge hub (everyone reads, admins change) ── */
-  async function loadCompany() {
-    try {
-      const { docs, can_edit: canEdit } = await api('/api/company');
-      const groups = {};
-      docs.forEach((d) => { (groups[d.venture || 'General'] = groups[d.venture || 'General'] || []).push(d); });
-      $('pp-company-list').innerHTML = Object.entries(groups).map(([v, list]) => `<div><div class="pp-venture">${esc(v)}</div>
-        <ul class="pp-list">${list.map((d) => `<li><b>${esc(d.title)}</b><span class="sub">${Math.max(1, Math.round(d.size / 1000))}k chars</span>
-        ${canEdit ? `<button data-cdoc="${esc(d.doc_id)}">Delete</button>` : ''}</li>`).join('')}</ul></div>`).join('');
-      $('pp-ventures').innerHTML = Object.keys(groups).filter((v) => v !== 'General').map((v) => `<option value="${esc(v)}">`).join('');
-      $('pp-company-admin').classList.toggle('hidden', !canEdit);
-      $('pp-company-role').textContent = canEdit ? 'You are an admin: you can add and remove documents.' : 'Only admins can change it.';
-      document.querySelectorAll('[data-cdoc]').forEach((b) => b.addEventListener('click', async () => {
-        if (!confirm('Remove this document from the company hub?')) return;
-        await api(`/api/company/${b.dataset.cdoc}`, { method: 'DELETE' });
-        loadCompany();
-      }));
-    } catch (_) { /* ignore */ }
-  }
-
-  $('pp-company-file').addEventListener('change', async () => {
-    const files = [...$('pp-company-file').files];
-    const venture = $('pp-venture').value.trim();
-    for (const file of files) {
-      say($('pp-company-status'), `Adding ${file.name}…`);
-      const form = new FormData();
-      form.append('file', file);
-      try { await api(`/api/company?venture=${encodeURIComponent(venture)}`, { method: 'POST', body: form }); say($('pp-company-status'), `Added ${file.name}.`); }
-      catch (e) { say($('pp-company-status'), `${file.name}: ${e.message}`, true); break; }
-    }
-    $('pp-company-file').value = '';
-    loadCompany();
-  });
-
-  $('pp-company-add').addEventListener('click', async () => {
-    try {
-      await api('/api/company', { method: 'POST', json: { title: $('pp-company-title').value, text: $('pp-company-text').value, venture: $('pp-venture').value } });
-      $('pp-company-title').value = ''; $('pp-company-text').value = '';
-      say($('pp-company-status'), 'Added.');
-      loadCompany();
-    } catch (e) { say($('pp-company-status'), e.message, true); }
-  });
-
   loadScripts();
   loadDocs();
-  loadCompany();
 })();

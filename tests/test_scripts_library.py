@@ -152,21 +152,25 @@ def test_company_hub_is_admin_only_and_used_as_fallback(tmp_path, monkeypatch):
     from backend.session_state import SessionState
     from fastapi.testclient import TestClient
     monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "c.db"))
-    monkeypatch.setattr(m, "_company_cache", {"version": None, "library": None})
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "all": None, "by_venture": {}})
     c = TestClient(m.app)
     a = {"x-user-id": "alice"}
     r = c.post("/api/company", json={"title": "Pricing 2026", "venture": "Billing Hub",
                                      "text": "Billing Hub costs 49 dollars per clinic per month. Annual plans get two months free."}, headers=a)
     assert r.status_code == 200 and r.json()["venture"] == "Billing Hub"
     listing = c.get("/api/company", headers={"x-user-id": "bob"}).json()
-    assert len(listing["docs"]) == 1 and listing["can_edit"]            # accounts off: everyone is the admin
+    assert listing["can_edit"]                                           # accounts off: everyone is the admin
+    assert [(v["name"], len(v["docs"])) for v in listing["ventures"]] == [("Billing Hub", 1)]
+    assert c.post("/api/company/ventures", json={"name": "Clinic Suite", "description": "Practice management"}, headers=a).status_code == 200
+    assert c.post("/api/company/ventures", json={"name": "clinic suite"}, headers=a).status_code == 400     # duplicate
+    assert c.post("/api/company/ventures", json={"name": "General"}, headers=a).status_code == 400
     # a member (accounts on) can read but not write
     monkeypatch.setattr(m, "AUTH_ACCOUNTS", True)
     monkeypatch.setattr(m.accounts, "user_from_request", lambda req: {"user_id": "u2", "role": "member", "email": "b@x.com"})
     member = TestClient(m.app)
     assert member.get("/api/company").json()["can_edit"] is False
     assert member.post("/api/company", json={"title": "x", "text": "y" * 40}).status_code == 403
-    assert member.delete(f"/api/company/{listing['docs'][0]['doc_id']}").status_code == 403
+    assert member.delete(f"/api/company/{listing['ventures'][0]['docs'][0]['doc_id']}").status_code == 403
     monkeypatch.setattr(m, "AUTH_ACCOUNTS", False)
     # live answers: own documents first, company hub as the fallback, "not in notes" if neither has it
     st = SessionState(session_id="s", user_id="alice")
@@ -178,3 +182,45 @@ def test_company_hub_is_admin_only_and_used_as_fallback(tmp_path, monkeypatch):
     st.library = library.Library([{"doc_id": "p", "title": "Client notes", "text": "Priya wants the price per clinic in rupees and a pilot."}])
     assert st.hint_sources.clear() or "Client notes" in m._ground_in_library(st, "price per clinic")      # own layer wins
     assert "Neither" in m._ground_in_library(st, "tell me about your football team")
+
+
+def test_business_picked_for_a_call_is_searched_first(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "v.db"))
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "all": None, "by_venture": {}})
+    store = m.get_userdata()
+    store.add_doc(m.COMPANY_ID, "Pricing", "Billing Hub costs 49 dollars per clinic per month for the platform.", "Billing Hub")
+    store.add_doc(m.COMPANY_ID, "Pricing", "Clinic Suite costs 199 dollars per clinic per month for the platform.", "Clinic Suite")
+    st = SessionState(session_id="s", user_id="alice")
+    st.company_library = m._company_library()
+    st.venture = "Clinic Suite"
+    hits, _ = m._knowledge_hits(st, "what does the platform cost per clinic")
+    assert hits[0]["title"] == "Company: Clinic Suite · Pricing"
+    st.venture = ""
+    assert {h["title"] for h in m._knowledge_hits(st, "what does the platform cost per clinic")[0]} >= {"Company: Billing Hub · Pricing"}
+    names = [v["name"] for v in store.list_ventures()]
+    assert names == ["Billing Hub", "Clinic Suite"] and store.delete_venture("Clinic Suite") == 1
+
+
+def test_business_summary_is_searchable_and_named_business_wins(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "n.db"))
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "all": None, "by_venture": {}, "names": []})
+    store = m.get_userdata()
+    store.add_venture("Clinic Suite", "Clinic Suite is practice management software for dental clinics: appointments, charting and reminders.")
+    store.add_venture("Billing Hub", "Billing Hub centralises patient payments and insurance claims.")
+    store.add_doc(m.COMPANY_ID, "Pricing", "The platform costs 199 dollars per clinic per month for the whole team.", "Clinic Suite")
+    store.add_doc(m.COMPANY_ID, "Pricing", "The platform costs 49 dollars per clinic per month for the whole team.", "Billing Hub")
+    st = SessionState(session_id="s", user_id="alice")
+    st.company_library = m._company_library()
+    hits, _ = m._knowledge_hits(st, "what does Clinic Suite do for dental clinics")
+    assert hits and hits[0]["title"] == "Company: Clinic Suite · About"
+    st.venture = "Billing Hub"                         # call is about Billing Hub, but the client names Clinic Suite
+    hits, _ = m._knowledge_hits(st, "and what does the Clinic Suite platform cost per clinic")
+    assert hits[0]["title"] == "Company: Clinic Suite · Pricing"
+    store.update_venture("Billing Hub", "Billing Hub is now a payments and claims product.")
+    assert m._company_library("Billing Hub").search("payments and claims product")

@@ -513,3 +513,22 @@ A shared, admin-managed library behind each person's own documents (`/prepare`, 
   only when it changes (`_company_library`, `UserDataStore.company_version`). Loaded for every session, no toggle.
 - Not done: Prepare me does not read the hub yet; no per-venture filter during a call; no version history.
 - Before a shared deployment: sign-up is open, so anyone who can create an account can read the hub.
+
+### Company hub: businesses + dedicated page — 2026-10-22
+- New page **`/company`** (`frontend/company.html|js`, header link "Company hub" everywhere): admins **add a business**
+  (name + one-line description), then upload decks/documents (.pdf .pptx .docx .txt .md, several at once) or paste
+  text under that business; remove a document or a whole business. Everyone else sees it read-only. The old section
+  at the bottom of `/prepare` is gone.
+- Storage: `ventures` table (name, description) next to the `docs` table; documents carry their business in
+  `venture` ("General" = none). API: `GET /api/company` → `{ventures:[{name,description,docs}], can_edit}`,
+  `POST/DELETE /api/company/ventures`, `POST /api/company` (file + `?venture=` or JSON), `DELETE /api/company/{id}`.
+- Per call: Meeting setup and the practice page have **"Which company business is this about?"** (only shown when
+  the hub has documents). WS `script` now carries `venture`; that business's documents are searched first, then the
+  whole hub, always after the presenter's own documents. 119 tests.
+- **Add a business in one step**: name + a summary paragraph (up to 1500 chars) + decks (PDF/PPTX/DOCX/TXT/MD) on
+  `/company`; summaries are editable later (`PUT /api/company/ventures?name=`). The summary is indexed as an
+  "<Business> · About" passage so "what does X do?" is answered from it.
+- **Fallback without any set-up**: every session loads the hub. If the client names a business (even one nobody
+  picked), that business's documents are searched first, then the picked business, then the whole hub — only after the
+  presenter's own documents found nothing. Applies to auto answer outlines, the Answer button / "Answer this" and
+  objection cards. 120 tests.

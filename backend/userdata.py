@@ -90,6 +90,8 @@ class UserDataStore:
             CREATE INDEX IF NOT EXISTS idx_docs_user ON docs (user_id, created_at DESC);
             """
         )
+        self._conn.execute("""CREATE TABLE IF NOT EXISTS ventures (
+            name TEXT PRIMARY KEY, description TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)""")
         if "venture" not in {r[1] for r in self._conn.execute("PRAGMA table_info(docs)")}:
             self._conn.execute("ALTER TABLE docs ADD COLUMN venture TEXT NOT NULL DEFAULT ''")
         self._conn.commit()
@@ -173,10 +175,49 @@ class UserDataStore:
         rows = self._run("SELECT doc_id, title, text, venture FROM docs WHERE user_id = ? ORDER BY created_at", (user_id,))
         return [{"doc_id": d, "title": t, "text": x, "venture": v} for d, t, x, v in rows if doc_ids is None or d in doc_ids]
 
+    # ── company businesses (ventures / products) ────────────────────────────
+    def list_ventures(self) -> list[dict]:
+        """Every business with its documents. Businesses that only exist as a document label are included."""
+        docs = self.list_docs(COMPANY_ID)
+        rows = {n: {"name": n, "description": d, "docs": []} for n, d in self._run(
+            "SELECT name, description FROM ventures ORDER BY name COLLATE NOCASE")}
+        for d in docs:
+            name = d["venture"] or "General"
+            rows.setdefault(name, {"name": name, "description": "", "docs": []})["docs"].append(d)
+        return sorted(rows.values(), key=lambda v: (v["name"] == "General", v["name"].lower()))
+
+    def add_venture(self, name: str, description: str = "") -> dict:
+        name, description = _s(name, 60), _s(description, 1500)
+        if not name:
+            raise ValueError("Give the business a name.")
+        if name.lower() == "general":
+            raise ValueError("\"General\" is reserved for documents that belong to no business.")
+        if any(v["name"].lower() == name.lower() for v in self.list_ventures()):
+            raise ValueError("That business already exists.")
+        self._run("INSERT INTO ventures (name, description, created_at) VALUES (?, ?, ?)", (name, description, int(time.time())), write=True)
+        return {"name": name, "description": description, "docs": []}
+
+    def update_venture(self, name: str, description: str) -> dict:
+        if not self._run("SELECT 1 FROM ventures WHERE name = ?", (name,)):
+            self._run("INSERT INTO ventures (name, description, created_at) VALUES (?, '', ?)", (name, int(time.time())), write=True)
+        self._run("UPDATE ventures SET description = ? WHERE name = ?", (_s(description, 1500), name), write=True)
+        return next(v for v in self.list_ventures() if v["name"] == name)
+
+    def delete_venture(self, name: str) -> int:
+        """Remove a business and all of its documents; returns how many documents went."""
+        n = len(self._run("SELECT 1 FROM docs WHERE user_id = ? AND venture = ?", (COMPANY_ID, name)))
+        self._run("DELETE FROM docs WHERE user_id = ? AND venture = ?", (COMPANY_ID, name), write=True)
+        self._run("DELETE FROM ventures WHERE name = ?", (name,), write=True)
+        return n
+
     def company_version(self) -> tuple:
         """Changes whenever the company library changes (used to cache its search index)."""
         row = self._run("SELECT COUNT(*), COALESCE(SUM(size), 0), COALESCE(MAX(created_at), 0) FROM docs WHERE user_id = ?", (COMPANY_ID,))[0]
-        return tuple(row)
+        v = self._run("SELECT COUNT(*), COALESCE(SUM(LENGTH(name) + LENGTH(description)), 0) FROM ventures")[0]
+        return tuple(row) + tuple(v)
+
+    def venture_summaries(self) -> list[dict]:
+        return [{"name": n, "description": d} for n, d in self._run("SELECT name, description FROM ventures")]
 
     def delete_doc(self, user_id: str, doc_id: str) -> bool:
         before = len(self._run("SELECT 1 FROM docs WHERE doc_id = ? AND user_id = ?", (doc_id, user_id)))

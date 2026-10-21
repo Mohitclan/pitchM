@@ -800,6 +800,10 @@ def _load_script(state: SessionState, payload: dict) -> None:
         state.script_id, state.script_name = script["script_id"], script["name"]
         state.script_target_minutes = int(script.get("minutes") or 0)
         state.record_timeline("script", f"Script: {script['name']} ({len(state.script_follower.lines) if state.script_follower else 0} lines)")
+    venture = str(payload.get("venture") or "")[:60]
+    if venture:
+        state.venture = venture
+        state.record_timeline("venture", f"Business: {venture}")
     if payload.get("use_library"):
         lib = doc_library.Library(store.get_docs(state.user_id))
         state.library = lib if lib else None
@@ -854,20 +858,30 @@ async def _script_lost(state: SessionState) -> None:
         state.script_lost_pending = False
 
 
-_company_cache: dict = {"version": None, "library": None}
+_company_cache: dict = {"version": None, "all": None, "by_venture": {}, "names": []}
 
 
-def _company_library():
-    """Search index over the admin-managed company knowledge hub (rebuilt only when it changes)."""
+def _company_library(venture: str = ""):
+    """Search index over the admin-managed company hub: the whole hub, or one business (rebuilt only when it changes)."""
     store = get_userdata()
     version = store.company_version()
-    if version[0] == 0:
+    if version[0] == 0 and version[3] == 0:
         return None
     if _company_cache["version"] != version:
         docs = [{**d, "title": f"{d['venture']} · {d['title']}" if d.get("venture") else d["title"]}
                 for d in store.get_docs(COMPANY_ID)]
-        _company_cache.update(version=version, library=doc_library.Library(docs))
-    return _company_cache["library"]
+        # each business's own summary is searchable too ("what does Clinic Suite do?")
+        docs += [{"doc_id": f"about:{v['name']}", "venture": v["name"], "title": f"{v['name']} · About",
+                  "text": f"{v['name']}: {v['description']}"} for v in store.venture_summaries() if len(v["description"]) >= 20]
+        by_venture: dict = {}
+        for d in docs:
+            by_venture.setdefault(d.get("venture") or "", []).append(d)
+        _company_cache.update(version=version, all=doc_library.Library(docs),
+                              by_venture={v: doc_library.Library(ds) for v, ds in by_venture.items() if v},
+                              names=sorted(by_venture.keys() - {""}, key=len, reverse=True))
+    if venture:
+        return _company_cache["by_venture"].get(venture)
+    return _company_cache["all"]
 
 
 def _knowledge_hits(state: SessionState, question: str) -> tuple[list[dict], bool]:
@@ -877,7 +891,15 @@ def _knowledge_hits(state: SessionState, question: str) -> tuple[list[dict], boo
         return [], False
     hits = state.library.search(question) if state.library else []
     if not hits and company:
-        hits = [{**h, "title": f"Company: {h['title']}"} for h in company.search(question)]
+        found = []
+        named = [n for n in _company_cache.get("names", []) if n.lower() in question.lower()]
+        for venture in named[:2] + ([state.venture] if state.venture else []):     # a business the client names, then the one picked
+            own = _company_library(venture)
+            found = own.search(question) if own else []
+            if found:
+                break
+        found = found or company.search(question)
+        hits = [{**h, "title": f"Company: {h['title']}"} for h in found]
     return hits, True
 
 
@@ -1004,16 +1026,45 @@ def _require_admin(request: Request) -> str:
     return user_id
 
 
+@app.get("/company")
+async def company_page():
+    return FileResponse("frontend/company.html", headers=_NO_CACHE)
+
+
 @app.get("/api/company")
 async def api_company_list(request: Request):
+    """Everyone signed in can read the hub; `can_edit` tells the page whether to show the admin controls."""
     _request_user_scope(request)
     can_edit = (not AUTH_ACCOUNTS) or accounts.is_admin(getattr(request.state, "user", None))
-    return {"docs": get_userdata().list_docs(COMPANY_ID), "can_edit": can_edit}
+    return {"ventures": get_userdata().list_ventures(), "can_edit": can_edit}
+
+
+@app.post("/api/company/ventures")
+async def api_company_add_venture(request: Request):
+    _require_admin(request)
+    body = await request.json()
+    try:
+        return get_userdata().add_venture(str(body.get("name") or ""), str(body.get("description") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/company/ventures")
+async def api_company_update_venture(request: Request, name: str):
+    _require_admin(request)
+    body = await request.json()
+    return get_userdata().update_venture(name, str(body.get("description") or ""))
+
+
+@app.delete("/api/company/ventures")
+async def api_company_delete_venture(request: Request, name: str):
+    _require_admin(request)
+    return {"ok": True, "documents_removed": get_userdata().delete_venture(name)}
 
 
 @app.post("/api/company")
 async def api_company_add(request: Request, file: UploadFile | None = File(None), venture: str = ""):
-    """Admin: add a deck / document (.pdf .pptx .docx .txt .md, multipart with ?venture=) or JSON {title, text, venture}."""
+    """Admin: add a deck / document to a business (.pdf .pptx .docx .txt .md; multipart with ?venture=, or JSON {title, text, venture})."""
     _require_admin(request)
     try:
         if file is not None:
@@ -1022,7 +1073,7 @@ async def api_company_add(request: Request, file: UploadFile | None = File(None)
                 raise ValueError("That file is over 15 MB.")
             name = (file.filename or "document").strip()
             text = doc_library.extract_text(name, data)
-            title, venture = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name), venture
+            title = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name)
         else:
             body = await request.json()
             title, text, venture = str(body.get("title") or ""), str(body.get("text") or ""), str(body.get("venture") or "")

@@ -270,6 +270,7 @@ class SessionState:
     script_follower: object = None       # ScriptFollower | None
     script_lost_pending: bool = False
     library: object = None               # Library | None (the presenter's own documents)
+    venture: str = ""                    # the company business this call is about (searched first in the hub)
     company_library: object = None       # Library | None (admin-managed company knowledge hub)
     hint_sources: dict = field(default_factory=dict)   # question -> {"sources": [...], "not_in_notes": bool}
     script_result: dict = field(default_factory=dict)

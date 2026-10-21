@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/meeting.css?v=20261022d" />
-  <link rel="stylesheet" href="/static/prepare.css?v=20261022d" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022d" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261022e" />
+  <link rel="stylesheet" href="/static/prepare.css?v=20261022e" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261022e" />
 </head>
 <body class="mt-page">
   <header class="mt-header">
@@ -17,6 +17,7 @@
     <span class="mt-header-tag">Prepare me</span>
     <nav class="mt-header-links">
       <a href="/meeting">Meeting Mode</a>
+      <a href="/company">Company hub</a>
       <a href="/app">Practice app</a>
       <a href="/guide">How to try it</a>
       <span id="tester-slot"></span>
@@ -77,7 +78,7 @@
       </section>
       <section class="mt-card pp-card">
         <h2 class="pp-h2">My documents</h2>
-        <p class="pp-hint">Pricing sheets, FAQs, case studies. Answers in a live call use these and say where a fact came from. PDF, PowerPoint, Word, TXT or MD, up to 5 MB each. These are for this call or client; company-wide facts live in the hub below.</p>
+        <p class="pp-hint">Pricing sheets, FAQs, case studies. Answers in a live call use these and say where a fact came from. PDF, PowerPoint, Word, TXT or MD, up to 5 MB each. These are for this call or client; company-wide facts live in the <a href="/company">Company hub</a>.</p>
         <ul id="pp-docs" class="pp-list"></ul>
         <div class="pp-add">
           <input id="pp-file" type="file" accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" />
@@ -90,29 +91,9 @@
       </section>
     </div>
 
-    <section class="mt-card pp-card" id="pp-company">
-      <h2 class="pp-h2">Company knowledge hub</h2>
-      <p class="pp-hint">The shared source of truth for every venture and product: pricing, features, decks, FAQs. During a call or rehearsal, if your own documents don't cover what the client asks, the coach answers from here and says which document it used.
-        <span id="pp-company-role"></span></p>
-      <div id="pp-company-list" class="pp-company-list"></div>
-      <div id="pp-company-admin" class="pp-add hidden">
-        <h3 class="pp-h3">Add to the hub <em>(admin)</em></h3>
-        <div class="pp-grid">
-          <label class="mt-field"><span>Venture / product</span>
-            <input id="pp-venture" type="text" maxlength="60" list="pp-ventures" placeholder="Billing Hub" /><datalist id="pp-ventures"></datalist></label>
-          <label class="mt-field"><span>Deck or document</span>
-            <input id="pp-company-file" type="file" multiple accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" /></label>
-        </div>
-        <details><summary>or paste text</summary>
-          <input id="pp-company-title" type="text" maxlength="80" placeholder="Title, e.g. Pricing 2026" />
-          <textarea id="pp-company-text" rows="5" placeholder="Paste the text"></textarea>
-          <button id="pp-company-add" type="button" class="mt-btn mt-btn-ghost">Add to hub</button></details>
-        <span id="pp-company-status" class="pp-status" role="status"></span>
-      </div>
-    </section>
   </main>
 
-  <script src="/static/tester.js?v=20261022d"></script>
-  <script src="/static/prepare.js?v=20261022d"></script>
+  <script src="/static/tester.js?v=20261022e"></script>
+  <script src="/static/prepare.js?v=20261022e"></script>
 </body>
 </html>

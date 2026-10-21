@@ -40,3 +40,17 @@
 .pp-company-list { display: grid; gap: 14px; margin-bottom: 8px; }
 .pp-company-list:empty::before { content: 'No company documents yet.'; color: var(--muted); font-size: 13px; }
 .pp-venture { font-family: var(--font-d); font-weight: 700; font-size: 15px; margin: 0 0 6px; }
+.cp-add-business { display: grid; gap: 14px; margin-top: 10px; }
+.cp-add-business input[type=text], .cp-add-business textarea, .cp-sum textarea { width: 100%; font: inherit; font-size: 14px; font-weight: 500; text-transform: none; letter-spacing: 0; padding: 10px 12px; border: 1px solid var(--border-hi); border-radius: 10px; color: var(--text); }
+.cp-sum { display: grid; gap: 8px; margin-bottom: 10px; }
+.cp-sum p { margin: 0; white-space: pre-wrap; }
+.cp-link { font: inherit; font-size: 12px; font-weight: 700; color: var(--accent); background: transparent; border: 0; cursor: pointer; padding: 0; justify-self: start; }
+.cp-list { display: grid; gap: 18px; }
+.cp-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.cp-head .pp-hint { margin-bottom: 8px; }
+.cp-del-venture { font: inherit; font-size: 12px; font-weight: 700; color: var(--danger); background: transparent; border: 0; cursor: pointer; white-space: nowrap; }
+.cp-upload { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.cp-file { cursor: pointer; }
+.cp-upload details { font-size: 13px; width: 100%; }
+.cp-upload details > * { margin-top: 8px; display: block; }
+.cp-upload input[type=text], .cp-upload textarea { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--border-hi); border-radius: 10px; }

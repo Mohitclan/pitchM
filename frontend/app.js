@@ -201,6 +201,7 @@ const recordVideoToggle = document.getElementById('record-video-toggle');
 const feedbackModeSelect = document.getElementById('feedback-mode');
 const scriptSelect = document.getElementById('script-select');
 const useLibraryBox = document.getElementById('use-library');
+const businessSelect = document.getElementById('business-select');
 let _script = null, _scriptStatus = null;
 const PRACTICE_EXTRAS_KEY = 'pitchmirror_practice_extras';
 const ROLEPLAY_LABELS = { investor: 'Investor', interviewer: 'Interviewer', client: 'Client' };
@@ -604,8 +605,8 @@ async function startSession() {
 
   ws.onopen = () => {
     console.log('WebSocket connected');
-    if (scriptSelect?.value || useLibraryBox?.checked) {
-      ws.send(JSON.stringify({ type: 'script', script_id: scriptSelect?.value || '', use_library: !!useLibraryBox?.checked }));
+    if (scriptSelect?.value || useLibraryBox?.checked || businessSelect?.value) {
+      ws.send(JSON.stringify({ type: 'script', script_id: scriptSelect?.value || '', use_library: !!useLibraryBox?.checked, venture: businessSelect?.value || '' }));
     }
     if (sessionCfg.pitchName || sessionCfg.roleplay) {
       ws.send(JSON.stringify({ type: 'pitch', name: sessionCfg.pitchName, points: sessionCfg.pitchPoints }));
@@ -2678,6 +2679,16 @@ document.getElementById('btn-lost')?.addEventListener('click', (e) => {
 });
 scriptSelect?.addEventListener('change', onPracticeScriptPicked);
 loadPracticeScripts();
+(async () => {
+  if (!businessSelect) return;
+  try {
+    const resp = await fetch('/api/company', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const names = ((await resp.json()).ventures || []).filter((v) => v.name !== 'General' && v.docs.length).map((v) => v.name);
+    businessSelect.innerHTML = '<option value="">Not specific</option>' + names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    document.getElementById('business-field')?.classList.toggle('hidden', !names.length);
+  } catch (_) { /* offline */ }
+})();
 
 function renderReadiness(data) {
   const r = data.readiness;

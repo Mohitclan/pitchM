@@ -108,6 +108,7 @@
   const clientField = $('mt-client');
   const clientsList = $('mt-clients');
   const scriptSelect = $('mt-script');
+  const businessSelect = $('mt-business');
   const useLibraryBox = $('mt-use-library');
   const lastCallEl = $('mt-last-call');
   const commitPanel = $('mt-commit-panel');
@@ -384,8 +385,9 @@
     plannedMinutes = minutes;
     const scriptId = scriptSelect?.value || '';
     const useLibrary = !!useLibraryBox?.checked;
-    if ((scriptId || useLibrary) && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'script', script_id: scriptId, use_library: useLibrary }));
+    const venture = businessSelect?.value || '';
+    if ((scriptId || useLibrary || venture) && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'script', script_id: scriptId, use_library: useLibrary, venture }));
     }
     if (!notes && !points.length && !client && !objections) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1131,6 +1133,20 @@
 
 
   /* ── Scripts & my documents ─────────────────────── */
+  async function loadBusinesses() {
+    if (!businessSelect) return;
+    try {
+      const resp = await fetch('/api/company', { headers: apiHeaders() });
+      if (!resp.ok) return;
+      const { ventures } = await resp.json();
+      const names = (ventures || []).filter((v) => v.name !== 'General' && v.docs.length).map((v) => v.name);
+      businessSelect.innerHTML = '<option value="">Not specific</option>' + names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      $('mt-business-field')?.classList.toggle('hidden', !names.length);
+      const last = localStorage.getItem('pitchmirror_last_business');
+      if (last && names.includes(last)) businessSelect.value = last;
+    } catch (_) { /* offline */ }
+  }
+
   async function loadScripts() {
     if (!scriptSelect) return;
     try {
@@ -1766,6 +1782,8 @@
   rehearseBtn?.addEventListener('click', startRehearsal);
   loadClients();
   loadScripts();
+  loadBusinesses();
+  businessSelect?.addEventListener('change', () => { try { localStorage.setItem('pitchmirror_last_business', businessSelect.value); } catch (_) { /* ignore */ } });
   scriptSelect?.addEventListener('change', onScriptPicked);
   useLibraryBox?.addEventListener('change', () => { try { localStorage.setItem('pitchmirror_use_library', useLibraryBox.checked ? '1' : '0'); } catch (_) { /* ignore */ } });
   if (clientField?.value) loadLastCall();

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261022d" />
+  <link rel="stylesheet" href="/static/style.css?v=20261022e" />
   <link rel="stylesheet" href="/static/tester.css?v=20261022a" />
 </head>
 <body>
@@ -23,6 +23,7 @@
       <div class="header-right">
         <span id="tester-slot"></span>
         <a href="/prepare" class="header-meeting-link">Prepare me</a>
+        <a href="/company" class="header-meeting-link">Company hub</a>
         <a href="/meeting" class="header-meeting-link">Meeting Mode</a>
         <button id="btn-history" type="button" class="header-history-btn">History</button>
         <div id="status-badge" class="status-badge idle">Idle</div>
@@ -147,6 +148,11 @@
               <option value="live">Live — tips, checklist and advice while I talk</option>
               <option value="end">Only at the end — no interruptions</option>
             </select>
+          </label>
+
+          <label class="config-field" id="business-field">
+            <span class="config-label">Company business <em>(its documents in the <a href="/company" target="_blank" rel="noopener">Company hub</a> are searched first)</em></span>
+            <select id="business-select" class="config-select"><option value="">Not specific</option></select>
           </label>
 
           <label class="config-field">
@@ -389,7 +395,7 @@
   <script src="/static/audio-leveler.js?v=20261022a"></script>
   <script src="/static/gaze.js?v=20261022a"></script>
   <script src="/static/rehearse.js?v=20261022a"></script>
-  <script src="/static/script-view.js?v=20261022d"></script>
-  <script src="/static/app.js?v=20261022d"></script>
+  <script src="/static/script-view.js?v=20261022e"></script>
+  <script src="/static/app.js?v=20261022e"></script>
 </body>
 </html>
