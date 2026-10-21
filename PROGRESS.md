@@ -532,3 +532,44 @@ A shared, admin-managed library behind each person's own documents (`/prepare`, 
   picked), that business's documents are searched first, then the picked business, then the whole hub — only after the
   presenter's own documents found nothing. Applies to auto answer outlines, the Answer button / "Answer this" and
   objection cards. 120 tests.
+
+## Solo end-to-end test kit — 2026-10-22
+`testkit/` lets one person test Meeting Mode without a meeting: **`client.html`** is a dummy client (Priya Sharma,
+Northwind Dental) with 11 voiced questions (macOS `say` → `audio/*.m4a`, rebuilt by `python3 build.py`); play it in a
+Chrome tab and share that tab's audio as "meeting audio". Each step lists what to say and what must appear.
+`TEST_PLAN.md` = setup, exact field values (meeting type, coach style, chattiness, business, script), run sheet and
+a pass/fail checklist. `docs/` holds the made-up company docs (Billing Hub + Clinic Suite, a PDF deck, client notes,
+the script, Prepare-me material). One-command loader: `python -m backend.seed_testkit KIT_DIR USERNAME`
+(`backend/seed_testkit.py`, idempotent). The test businesses go into the real hub: remove them afterwards.
+- Prepare me: **Write my own script instead** button (empty editor, no AI call).
+- Bug found by the kit and fixed: with few documents, personal notes matched almost any question on weak word overlap,
+  shadowing hub answers and giving false "found it" for unknown topics (SOC 2). `Library.search` now needs a passage to
+  cover ≥30% of the question's weighted words (words in no document count as missing; ≥2 matching words for questions of
+  3+ words) and returns `cov`; own documents win only if `cov×1.15 ≥` the hub's. 122 tests.
+
+## Practice meeting (test mode) in Meeting Mode — 2026-10-23
+A built-in dummy meeting every user can run before a real client call (`/meeting` → **Start practice meeting**,
+shown at the top of setup; a "Tested ✓" badge appears once one is finished).
+- **Built-in client**: Priya Sharma (Northwind Dental) asks 11 questions, pre-rendered with the local Kokoro voice
+  (`frontend/demo/audio/c1..c11.m4a`, source text in `backend/demo_kit.py`, how-to in `frontend/demo/README.md`).
+  `frontend/demo-meeting.js` plays each clip through the speakers AND feeds it, in 100 ms frames driven by the mic
+  chunks, into the same "other side" audio path (0x06) a tab-audio share uses. The server transcribes, answers and
+  coaches it exactly as in a real call. The mic is not sent while Priya speaks (`PMBridge.micGate`), so no echo and
+  no headphones are needed. Bridge between the two files: `window.PMBridge` in `meeting.js`.
+- **Guide** (`#mt-guide`, main page next to the notch): step n of 11, Priya's line with a **▶ Priya asks** button, what
+  the user should say (teleprompter), "watch for", Back/Next/Skip, and the live **script** with I'm lost. Each step
+  turns ✓ when the matching server message really arrives (answer from the hub with sources, Clinic Suite fallback,
+  objection card, "not in notes", I'm lost, talk-time nudge, commitments, scorecard). Summary at the end, "run again".
+- **Server** (`?practice=1` on the meeting WebSocket → `state.practice_meeting`): loads the demo script and the
+  fictional hub **in memory only**; the real company hub, personal documents and saved scripts are never used or
+  touched; no past-call memory; no coaching-profile update; session saved with `practice_meeting: true`.
+  `db.list_recent(include_practice=False)` hides practice sessions from client list, trends, stats, pitches, pilot
+  feedback and history context; History shows them tagged "Practice meeting". `GET /api/demo-kit` returns the kit and
+  `completed`.
+- Real run (temp server + real models, synthetic mic speaking the script, 270 s): script followed (lines 0–6 covered),
+  Priya transcribed word for word, answers cited the demo hub, 9 of 11 features ticked (the other two, talk-time nudge and
+  commitments, need real speech), scorecard + readiness returned, session flagged and hidden from clients. 
+- Fixes found on the way: "I'm lost" now picks the latest matching line (was the first); company name matching
+  ignores spaces ("ClinicSuite"); plain price/data questions are no longer shown as objections; filler words like
+  "much/please/tell" ignored in document search; `≥2 matching words` counted before the common-word filter.
+- Tests: `tests/test_practice_meeting.py`. 128 passing. Old manual kit (`testkit/`) still works for a real-tab test.

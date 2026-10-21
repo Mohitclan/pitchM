@@ -49,6 +49,11 @@ of inventing; the scorecard gets a Ready / Almost / Not yet check. Code: `backen
 readiness,userdata}.py`, `frontend/{prepare.*,script-view.js}`. WS adds client `script`, `script_lost`, `script_goto`;
 server `script_loaded`, `script_pos`, `script_where`. Details in PROGRESS.md and `docs/PRODUCT_PLAN.md`.
 
+**Practice meeting / test mode (2026-10-23):** `/meeting` → "Start practice meeting": a built-in dummy client (Priya)
+speaks 11 pre-recorded questions into the normal meeting pipeline while a guide ticks each feature as the server fires
+it. Kit in `backend/demo_kit.py`, audio in `frontend/demo/audio/`, browser side `frontend/demo-meeting.js`
+(`window.PMBridge` in `meeting.js`), WS flag `?practice=1`. Fully isolated from real hub/documents/history stats.
+
 **Accounts (2026-10-22):** `AUTH_MODE=accounts` makes every person sign in (`/login`) and keeps their data private
 (`backend/auth.py`, guide in `docs/ORG_ROLLOUT.md`). Off by default; the old "Who's testing?" picker remains for a
 one-laptop pilot.
@@ -92,7 +97,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   ```
 
   Open Docker Desktop first with `open -a Docker` if needed. macOS has no `timeout` command.
-- **Tests:** `.venv/bin/python -m pytest tests/ -q` (116 tests). Live-model smoke test: `scripts/smoke_test.py`.
+- **Tests:** `.venv/bin/python -m pytest tests/ -q` (128 tests). Live-model smoke test: `scripts/smoke_test.py`.
 - **Chrome** with headphones is needed for the full experience.
 
 ## Where things stand (2026-10-21)

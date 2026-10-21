@@ -223,6 +223,7 @@ def _session_extras(state) -> dict:
         "ignored_chatter": getattr(state, "ignored_chatter", []),
         "facts": getattr(state, "facts", []),
         "pitch": getattr(state, "pitch", {}),
+        "practice_meeting": bool(getattr(state, "practice_meeting", False)),
         "script_result": getattr(state, "script_result", {}),
         "readiness": getattr(state, "readiness", {}),
         "roleplay_role": getattr(state, "roleplay_role", ""),

@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261022e" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261022e" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022e" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261023a" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261023a" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261023a" />
 </head>
 <body class="mt-page">
 
@@ -30,6 +30,17 @@
 
     <!-- Setup -->
     <section id="mt-setup" class="mt-card mt-setup">
+      <div id="mt-practice" class="mt-practice hidden">
+        <div class="mt-practice-text">
+          <b>Test mode: try a practice meeting first</b>
+          <span id="mt-practice-badge" class="mt-practice-badge hidden">Tested ✓</span>
+          <p>A built-in dummy client, Priya, asks 11 realistic questions out loud while you present a sample script. It runs
+            exactly like a real meeting, so you see every feature work: script follow-along, answers from documents,
+            objection cards, nudges, commitments and the final review. About 12 minutes. Nothing is added to your real
+            clients, documents or progress.</p>
+        </div>
+        <button id="mt-practice-btn" type="button" class="mt-btn mt-btn-primary">Start practice meeting</button>
+      </div>
       <h1 class="mt-title">Your coach, inside any meeting</h1>
       <p class="mt-sub">
         A small floating coach bubble sits on top of Zoom, Google Meet, Teams or any call.
@@ -171,6 +182,8 @@
       </div>
       <p id="mt-pip-note" class="mt-note"></p>
       <button id="mt-reopen" type="button" class="mt-btn mt-btn-ghost hidden">Pop the bubble out again</button>
+
+      <section id="mt-guide" class="mt-guide hidden" aria-live="polite"></section>
 
       <div id="mt-points-panel" class="mt-points-panel hidden">
         <div class="mt-label">Points to cover <span id="mt-points-count" class="mt-points-count"></span></div>
@@ -327,11 +340,12 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261022e"></script>
-  <script src="/static/audio-leveler.js?v=20261022e"></script>
-  <script src="/static/gaze.js?v=20261022e"></script>
-  <script src="/static/rehearse.js?v=20261022e"></script>
-  <script src="/static/script-view.js?v=20261022e"></script>
-  <script src="/static/meeting.js?v=20261022e"></script>
+  <script src="/static/tester.js?v=20261023a"></script>
+  <script src="/static/audio-leveler.js?v=20261023a"></script>
+  <script src="/static/gaze.js?v=20261023a"></script>
+  <script src="/static/rehearse.js?v=20261023a"></script>
+  <script src="/static/script-view.js?v=20261023a"></script>
+  <script src="/static/demo-meeting.js?v=20261023a"></script>
+  <script src="/static/meeting.js?v=20261023a"></script>
 </body>
 </html>

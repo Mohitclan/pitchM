@@ -161,6 +161,21 @@
   let clientQuestions = [];          // what the client asked: [{ ts, text }]
   let answeredQuestions = new Set(); // indexes the presenter already asked for an answer to
   let assistTab = 'answers';
+  // Practice meeting (test mode): demo-meeting.js plays the dummy client and drives the guide through this bridge.
+  let practiceMode = false;
+  const bridge = window.PMBridge = {
+    micGate: false,                       // true while the dummy client speaks: the mic is not sent (no echo)
+    isLive: () => active && !paused && !!ws && ws.readyState === WebSocket.OPEN,
+    sendOther(f32) {
+      if (!bridge.isLive()) return;
+      ws.send(frame(T_OTHER_AUDIO_IN, toPcm16(f32)));
+      trackVoice('them', rms(f32));
+    },
+    askLost: () => askLost(),
+    gotoLine(i) { if (bridge.isLive()) ws.send(JSON.stringify({ type: 'script_goto', index: i })); },
+    onMessage: null, onTick: null, onStart: null, onEnd: null,
+    start() { practiceMode = true; return startMeeting(); },
+  };
   // Script follow-along: the chosen script ({ script_id, name, sections, objections, ... }) and the live position
   let script = null, scriptStatus = null;
   // Talk time from voice activity (100 ms chunks): totals, recent windows, longest turn.
@@ -386,7 +401,7 @@
     const scriptId = scriptSelect?.value || '';
     const useLibrary = !!useLibraryBox?.checked;
     const venture = businessSelect?.value || '';
-    if ((scriptId || useLibrary || venture) && ws && ws.readyState === WebSocket.OPEN) {
+    if ((practiceMode || scriptId || useLibrary || venture) && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'script', script_id: scriptId, use_library: useLibrary, venture }));
     }
     if (!notes && !points.length && !client && !objections) return;
@@ -829,6 +844,7 @@
     if (typeof ev.data !== 'string') return;   // meeting mode never plays coach audio
     let msg;
     try { msg = JSON.parse(ev.data); } catch (_) { return; }
+    try { bridge.onMessage?.(msg); } catch (e) { console.error(e); }
     switch (msg.type) {
       case 'status':
         if (msg.session_id) sessionId = msg.session_id;
@@ -1481,6 +1497,8 @@
     // background window, so they also drive the gaze checks and stats.
     worklet = await window.PMAudio.createLeveler(audioCtx, stream, (chunk) => {
       if (!active || !ws || ws.readyState !== WebSocket.OPEN) return;
+      bridge.onTick?.();
+      if (bridge.micGate) { trackVoice('you', 0); pulse(); return; }
       if (!paused) ws.send(frame(T_AUDIO_IN, toPcm16(chunk.pcm)));
       trackVoice('you', chunk.raw);
       pulse();
@@ -1578,6 +1596,7 @@
     saveSettings();
     if (rehearsal) stopRehearsal(true);
     startBtn.disabled = true;
+    bridge.onStart?.(practiceMode);          // audio for the dummy client must be unlocked inside the click
 
     // The PiP window must be requested inside the click, before any other await.
     bubble = createBubble();
@@ -1617,6 +1636,7 @@
     url.searchParams.set('chatty', fields.chatty?.value || 'balanced');
     url.searchParams.set('context', 'virtual');
     url.searchParams.set('user', USER_ID);
+    if (practiceMode) url.searchParams.set('practice', '1');
     const token = (localStorage.getItem('pitchmirror_api_token') || '').trim();
     if (token) url.searchParams.set('token', token);
 
@@ -1633,8 +1653,8 @@
       sendBrief();
       setTimeout(renderAssist, 400);
       await startAudio();
-      await startOtherAudio();
-      if (!otherStream) {
+      if (!practiceMode) await startOtherAudio();
+      if (!otherStream && !practiceMode) {
         pipNoteEl.textContent += ' Only your voice is coached — the other person isn\'t being captured.';
       }
       if (fields.camera.checked && window.GazeTracker) {
@@ -1689,6 +1709,7 @@
   function endMeeting() {
     if (!active || ending) return;
     ending = true;
+    bridge.micGate = false;
     refreshStats();
     sendTalkStats();
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([T_STOP]).buffer);
@@ -1787,7 +1808,7 @@
   scriptSelect?.addEventListener('change', onScriptPicked);
   useLibraryBox?.addEventListener('change', () => { try { localStorage.setItem('pitchmirror_use_library', useLibraryBox.checked ? '1' : '0'); } catch (_) { /* ignore */ } });
   if (clientField?.value) loadLastCall();
-  startBtn.addEventListener('click', startMeeting);
+  startBtn.addEventListener('click', () => { practiceMode = false; startMeeting(); });
   endBtn.addEventListener('click', endMeeting);
   reopenBtn.addEventListener('click', async () => {
     if (!bubble) return;

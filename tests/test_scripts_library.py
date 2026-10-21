@@ -224,3 +224,50 @@ def test_business_summary_is_searchable_and_named_business_wins(tmp_path, monkey
     assert hits[0]["title"] == "Company: Clinic Suite · Pricing"
     store.update_venture("Billing Hub", "Billing Hub is now a payments and claims product.")
     assert m._company_library("Billing Hub").search("payments and claims product")
+
+
+def test_weak_overlap_does_not_count_as_an_answer():
+    notes = library.Library([{"doc_id": "n", "title": "Client notes", "text":
+        "Priya Sharma, Head of Operations at Northwind Dental. Worried about price, setup time and Zoho Books. "
+        "Her CFO approves spend over 20000 dollars. Goal: agree a pilot and a follow up call."}])
+    assert notes.search("Do you have SOC 2 certification? Our compliance team will definitely ask about that.") == []
+    assert notes.search("what is Priya worried about with setup and price")[0]["cov"] >= 0.3
+
+
+def test_own_notes_win_only_when_they_answer_as_well_as_the_hub(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "w.db"))
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "all": None, "by_venture": {}, "names": []})
+    m.get_userdata().add_doc(m.COMPANY_ID, "FAQ", "If you stop using Billing Hub you can export all your data as CSV files for 30 days.", "Billing Hub")
+    st = SessionState(session_id="s", user_id="u")
+    st.company_library = m._company_library()
+    st.library = library.Library([{"doc_id": "n", "title": "Notes", "text": "Priya is worried about setup time and the price per clinic."}])
+    hits, _ = m._knowledge_hits(st, "what happens to our data if we stop using Billing Hub")
+    assert hits[0]["title"].startswith("Company: ")
+    hits, _ = m._knowledge_hits(st, "what is Priya worried about, setup time and price per clinic")
+    assert hits[0]["title"] == "Notes"
+
+
+def test_locate_prefers_the_latest_line_when_words_span_several():
+    f = script_follow.ScriptFollower(script_follow.parse_script_text(SCRIPT))
+    recent = ("thanks for making the time today Today I will show how Billing Hub centralises your clinic payments "
+              "Billing Hub collects every patient payment in one dashboard It reconciles insurance claims automatically each night")
+    assert f.locate(recent)[0] == 3
+
+
+def test_business_name_matches_even_when_transcribed_without_a_space(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "s.db"))
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "all": None, "by_venture": {}, "names": []})
+    store = m.get_userdata()
+    store.add_doc(m.COMPANY_ID, "Pricing", "The platform costs 199 dollars per clinic per month for the whole team.", "Clinic Suite")
+    store.add_doc(m.COMPANY_ID, "Pricing", "The platform costs 49 dollars per clinic per month for the whole team.", "Billing Hub")
+    st = SessionState(session_id="s", user_id="u")
+    st.company_library = m._company_library()
+    st.venture = "Billing Hub"
+    hits, _ = m._knowledge_hits(st, "what does ClinicSuite cost per clinic for the platform")
+    assert hits[0]["title"] == "Company: Clinic Suite · Pricing"

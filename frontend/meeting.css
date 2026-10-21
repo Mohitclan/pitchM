@@ -260,3 +260,51 @@
 .mt-check { flex-direction: row; align-items: center; gap: 10px; }
 .mt-check input { width: auto; margin: 0; }
 .mt-check span { margin: 0; }
+
+/* ── Practice meeting (test mode) ── */
+.mt-practice { display: flex; gap: 18px; align-items: center; justify-content: space-between; padding: 16px 18px; margin: 0 0 18px;
+  border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--surface-2); }
+.mt-practice.is-new { border-color: var(--accent); background: var(--accent-dim); }
+.mt-practice p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+.mt-practice-badge { margin-left: 8px; font-size: 11px; font-weight: 800; color: var(--ok); background: rgba(22, 163, 74, 0.12); border-radius: 999px; padding: 2px 9px; }
+.mt-practice .mt-btn { white-space: nowrap; }
+@media (max-width: 760px) { .mt-practice { flex-direction: column; align-items: flex-start; } }
+.mt-guide { margin: 14px 0 18px; padding: 16px 18px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface); }
+.mg-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.mg-sub { color: var(--muted); font-size: 13px; font-weight: 600; }
+.mg-count { font-size: 13px; font-weight: 700; color: var(--accent); }
+.mg-bar { height: 6px; border-radius: 999px; background: var(--surface-2); margin: 8px 0 10px; overflow: hidden; }
+.mg-bar i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+.mg-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.mg-chip { font: inherit; font-size: 12px; font-weight: 700; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border-hi); background: var(--surface); cursor: pointer; color: var(--text-2); }
+.mg-chip.is-cur { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.mg-chip.is-ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+.mg-chip.is-skip { opacity: .5; }
+.mg-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; }
+@media (max-width: 860px) { .mg-grid { grid-template-columns: 1fr; } }
+.mg-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg); }
+.mg-who { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.mg-line { font-size: 19px; font-weight: 700; margin: 6px 0 12px; line-height: 1.35; }
+.mg-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mg-phase { font-size: 13px; color: var(--text-2); }
+.mg-you { margin-top: 12px; font-size: 14px; line-height: 1.5; }
+.mg-watch { margin-top: 10px; font-size: 13.5px; line-height: 1.5; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.mg-watch.is-seen { background: rgba(22, 163, 74, 0.1); }
+.mg-tick { font-weight: 800; margin-right: 6px; }
+.mg-watch.is-seen .mg-tick { color: var(--ok); }
+.mg-nav { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.mg-hint { font-size: 13.5px; color: var(--text-2); line-height: 1.5; }
+.mg-script-body { max-height: 330px; overflow-y: auto; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mg-lost { margin-left: auto; font: inherit; font-size: 12px; font-weight: 800; color: #1a1305; background: #fbbf24; border: 0; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.mg-lost-card { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(251, 191, 36, .16); border: 1px solid rgba(217, 119, 6, .5); font-size: 13.5px; line-height: 1.45; }
+.mg-lost-next { font-size: 15px; font-weight: 700; }
+.mg-sum { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.mg-sum .ok { color: var(--ok); } .mg-sum .no { color: var(--muted); }
+.mt-guide .sv-sec { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; background: var(--surface); }
+.mt-guide .sv-sec.is-skipped { border-style: dashed; border-color: var(--danger); }
+.mt-guide .sv-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 3px; }
+.mt-guide .sv-title em { font-style: normal; color: var(--danger); margin-left: 6px; text-transform: none; }
+.mt-guide .sv-lines { margin: 0; padding: 0; list-style: none; }
+.mt-guide .sv-line { padding: 3px 6px; border-radius: 6px; font-size: 14px; line-height: 1.45; color: var(--text-2); cursor: pointer; }
+.mt-guide .sv-line.is-done { opacity: .45; text-decoration: line-through; }
+.mt-guide .sv-line.is-next { opacity: 1; color: var(--text); font-weight: 700; font-size: 15.5px; background: var(--accent-dim); box-shadow: inset 3px 0 0 var(--accent); }

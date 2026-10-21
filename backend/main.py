@@ -83,6 +83,7 @@ from backend import claude_client
 from backend import meeting_brief
 from backend import coach_extras
 from backend import auth as accounts
+from backend import demo_kit
 from backend import library as doc_library
 from backend import script_follow
 from backend import prepare as prepare_mod
@@ -793,6 +794,14 @@ async def meeting_page():
 def _load_script(state: SessionState, payload: dict) -> None:
     """The browser picked a saved script and/or turned on "use my documents"."""
     store = get_userdata()
+    if state.practice_meeting:                  # the built-in practice meeting: its own script and documents only
+        sections = demo_kit.script_sections()
+        state.script_follower = script_follow.ScriptFollower(sections)
+        state.script_id, state.script_name, state.script_target_minutes = "practice", "Northwind call (practice)", 15
+        state.library = None
+        state._enqueue({"type": "script_loaded", "ok": True, "library": False, "sections": sections,
+                        "status": state.script_follower.status()})
+        return
     script = store.get_script(state.user_id, str(payload.get("script_id") or "")) if payload.get("script_id") else None
     if script:
         sections = script_follow.parse_script_text(script["text"])
@@ -834,7 +843,7 @@ async def _script_lost(state: SessionState) -> None:
     state.script_lost_pending = True
     try:
         user_tail = " ".join(seg["t"] for seg in state.transcript if seg.get("s") == "u")
-        words = user_tail.split()[-60:]
+        words = user_tail.split()[-30:]
         recent = " ".join(words)
         idx, conf = follower.locate(recent) if recent else (-1, 0.0)
         if conf >= 0.45:
@@ -885,22 +894,28 @@ def _company_library(venture: str = ""):
 
 
 def _knowledge_hits(state: SessionState, question: str) -> tuple[list[dict], bool]:
-    """The presenter's own documents first; the company hub only when theirs have nothing. (hits, any_library)"""
+    """
+    Facts for a question: the presenter's own documents and the company hub are both searched, and the own
+    documents win unless the hub answers clearly better. Inside the hub, a business the client names comes first,
+    then the business picked for this call, then everything. Returns (hits, any_library).
+    """
     company = getattr(state, "company_library", None)
     if not state.library and not company:
         return [], False
-    hits = state.library.search(question) if state.library else []
-    if not hits and company:
-        found = []
-        named = [n for n in _company_cache.get("names", []) if n.lower() in question.lower()]
-        for venture in named[:2] + ([state.venture] if state.venture else []):     # a business the client names, then the one picked
-            own = _company_library(venture)
-            found = own.search(question) if own else []
-            if found:
+    own = state.library.search(question) if state.library else []
+    hub: list[dict] = []
+    if company:
+        squash = lambda t: re.sub(r"[^a-z0-9]", "", t.lower())      # "Clinic Suite" is often transcribed "ClinicSuite"
+        named = [] if state.practice_meeting else [n for n in _company_cache.get("names", []) if squash(n) in squash(question)]
+        for venture in [] if state.practice_meeting else named[:2] + ([state.venture] if state.venture else []):
+            lib = _company_library(venture)
+            hub = lib.search(question) if lib else []
+            if hub:
                 break
-        found = found or company.search(question)
-        hits = [{**h, "title": f"Company: {h['title']}"} for h in found]
-    return hits, True
+        hub = hub or company.search(question)
+    if own and (not hub or own[0]["cov"] * 1.15 >= hub[0]["cov"]):
+        return own, True
+    return [{**h, "title": f"Company: {h['title']}"} for h in hub], True
 
 
 def _ground_in_library(state: SessionState, question: str, *, store_key="q") -> str:
@@ -1024,6 +1039,15 @@ def _require_admin(request: Request) -> str:
     if AUTH_ACCOUNTS and not accounts.is_admin(getattr(request.state, "user", None)):
         raise HTTPException(status_code=403, detail="Only admins can change the company knowledge hub.")
     return user_id
+
+
+@app.get("/api/demo-kit")
+async def api_demo_kit(request: Request):
+    """Everything the browser needs for the built-in practice meeting, plus whether this person already finished one."""
+    user_id = _request_user_scope(request)
+    done = [x for x in await _db.list_recent(limit=100, user_id=user_id, include_practice=True)
+            if x.get("practice_meeting") and not x.get("insufficient_speech")]
+    return {**demo_kit.kit_payload(), "completed": bool(done), "completed_at": max((x.get("created_at") or 0) for x in done) if done else None}
 
 
 @app.get("/company")
@@ -1210,6 +1234,7 @@ def _session_summary(payload: dict) -> dict:
         "visual_score": (categories.get("visual_delivery") or {}).get("score"),
         "coaching_moments": len(payload.get("coaching_events") or []),
         "client": payload.get("client", ""),
+        "practice_meeting": bool(payload.get("practice_meeting")),
         "pitch_name": (payload.get("pitch") or {}).get("name", ""),
         "pitch_version": (payload.get("pitch") or {}).get("version"),
         "roleplay_role": payload.get("roleplay_role", ""),
@@ -1391,7 +1416,7 @@ async def api_session_trends(request: Request, limit: int = Query(default=40, ge
 @app.get("/api/sessions")
 async def api_list_sessions(request: Request, limit: int = Query(default=20, ge=1, le=100)):
     user_id = _request_user_scope(request)
-    sessions = await _db.list_recent(limit=limit, user_id=user_id)
+    sessions = await _db.list_recent(limit=limit, user_id=user_id, include_practice=True)
     return {"sessions": [_session_summary(s) for s in sessions]}
 
 
@@ -1719,6 +1744,7 @@ async def websocket_endpoint(websocket: WebSocket):
     live_feedback = (websocket.query_params.get("feedback") or "live").strip().lower() != "end"
     raw_role = (websocket.query_params.get("roleplay") or "").strip().lower()
     roleplay_role = raw_role if session_kind == "practice" and raw_role in coach_extras.ROLEPLAY_ROLES else ""
+    practice_meeting = session_kind == "meeting" and (websocket.query_params.get("practice") or "") == "1"
     if session_kind == "meeting":
         screen_enabled = False   # no slide/screen coaching while in a real call
         demo_mode = False
@@ -1750,6 +1776,7 @@ async def websocket_endpoint(websocket: WebSocket):
         roleplay_role=roleplay_role,
         chattiness=chattiness,
         live_feedback=live_feedback or session_kind == "meeting",
+        practice_meeting=practice_meeting,
     )
     state.record_timeline(
         "session",
@@ -1764,7 +1791,7 @@ async def websocket_endpoint(websocket: WebSocket):
     )
     live_request_queue = LiveRequestQueue()
     state.live_queue = live_request_queue
-    state.company_library = _company_library()
+    state.company_library = demo_kit.hub_library() if practice_meeting else _company_library()
     if transcription_enabled():
         state.user_stt = LiveTranscriber(
             "user", _stt_callback(state, "user"), session_id=session_id, on_status=_stt_status_callback(state, "user"),
@@ -1891,7 +1918,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await _db.save_session(session_id, scorecard)
     await _safe_send(websocket, {"type": "scorecard", "data": scorecard})
     logger.info(f"Session {session_id} complete. Score: {scorecard['overall_score']}")
-    if callable(state.pending_profile_update):
+    if callable(state.pending_profile_update) and not state.practice_meeting:      # practice runs don't shape the coaching profile
         await state.pending_profile_update()
 
 
@@ -2763,6 +2790,8 @@ async def _previous_call_for(user_id: str, client: str, *, exclude: str = "") ->
 
 
 async def _load_previous_call(state: SessionState) -> None:
+    if state.practice_meeting:
+        return
     try:
         state.previous_call = await _previous_call_for(state.user_id, state.client_name, exclude=state.session_id)
     except Exception as exc:

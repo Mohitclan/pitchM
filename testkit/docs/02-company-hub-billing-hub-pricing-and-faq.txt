@@ -1,0 +1,19 @@
+BILLING HUB: PRICING AND FAQ (company approved, October 2026)
+
+Pricing
+Billing Hub costs 49 US dollars per clinic per month. Annual plans get two months free. There is no setup fee for groups with ten or more clinics; smaller groups pay a one-time setup fee of 500 dollars. A 30-day pilot on up to three clinics is free.
+
+Setup
+Setup takes about two weeks. We import patient balances and open claims from your current system, train the front-desk team in one 60-minute session, and run in parallel for one week before you switch over.
+
+Integrations
+Billing Hub integrates with Zoho Books, QuickBooks Online and Xero. Payments sync to your ledger every night. It also connects to Clinic Suite with a one-click sync.
+
+Proof
+Brightsmile Dental Group runs Billing Hub across 14 clinics. They cut the time their team spends on billing by 40 percent in the first quarter and reduced unpaid claims older than 60 days by a third.
+
+Data and security
+All data is encrypted at rest and in transit. Servers are hosted in the EU. If you stop using Billing Hub you can export all of your data as CSV files at any time and for 30 days after you cancel.
+
+Support
+Support is included: email and chat during business hours, and a named customer success manager for groups with ten or more clinics.

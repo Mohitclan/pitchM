@@ -136,14 +136,19 @@ class ScriptFollower:
         return (self.pos, len(self.covered)) != before
 
     def locate(self, text: str) -> tuple[int, float]:
-        """Best line for some words anywhere in the script: (index, confidence 0-1); (-1, 0) if none."""
+        """Best line for some recent words anywhere in the script: (index, confidence 0-1); (-1, 0) if none.
+        When several lines fit about equally well (the words span a few lines), the LATEST one is the place."""
         window = set(content_tokens(text))
-        best, best_frac = -1, 0.0
+        scored = []
         for ln in self.lines:
             frac, shared = self._score(ln["toks"], window)
-            if shared >= 2 and frac > best_frac:
-                best, best_frac = ln["idx"], frac
-        return best, round(best_frac, 2)
+            if shared >= 2 and frac > 0:
+                scored.append((frac, ln["idx"]))
+        if not scored:
+            return -1, 0.0
+        best = max(f for f, _ in scored)
+        idx = max(i for f, i in scored if f >= best - 0.1)
+        return idx, round(best, 2)
 
     def goto(self, next_idx: int) -> None:
         """Presenter says "I'm about to say line N": the place is the line before it."""

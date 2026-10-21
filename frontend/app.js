@@ -3031,6 +3031,7 @@ async function showHistory() {
       const kindBadge = (s.session_kind === 'meeting'
         ? '<span class="history-kind is-meeting">Meeting</span>'
         : '<span class="history-kind">Practice</span>')
+        + (s.practice_meeting ? ' <span class="history-kind is-pitch">Practice meeting</span>' : '')
         + (s.pitch_name ? ` <span class="history-kind is-pitch">${escapeHtml(s.pitch_name)} v${Number(s.pitch_version) || 1}</span>` : '')
         + (s.roleplay_role ? ` <span class="history-kind">Role-play: ${escapeHtml(ROLEPLAY_LABELS[s.roleplay_role] || s.roleplay_role)}</span>` : '');
       const extra = [

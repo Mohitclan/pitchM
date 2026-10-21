@@ -1,0 +1,5 @@
+Paste this into Prepare me (optional test of the AI drafting; costs a little Claude credit).
+
+Billing Hub centralises patient payments and insurance claims for dental and medical clinics. One dashboard shows every payment, every open claim and every balance across all clinics. Sold per clinic per month to groups with five or more locations: 49 dollars per clinic per month, two months free on annual plans, free 30-day pilot on up to three clinics. Setup takes about two weeks, with a 60-minute training session and one week running in parallel. Integrates with Zoho Books, QuickBooks Online and Xero, syncing every night. Brightsmile Dental Group, 14 clinics, cut billing time by 40 percent in the first quarter. Data encrypted at rest and in transit, EU hosting, full CSV export at any time and for 30 days after cancelling.
+
+Client: Northwind Dental, 22 clinics, Priya Sharma (Head of Operations). They use spreadsheets and Zoho Books; month-end close takes six days. Worried about price, setup disruption, and Zoho Books compatibility. CFO Rahul Mehta approves spend over 20,000 dollars a year. Goal: agree a 30-day pilot on three clinics.

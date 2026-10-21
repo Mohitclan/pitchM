@@ -23,6 +23,7 @@ a an the and or but if then so to of in on at for with from by as is are was wer
 these those i we you they he she our your their my me us them will would can could should do does did have has had
 not no yes just very really about into than also more most some any all each how what when where which who whom why
 there here up out over under again further once only own same too s t d ll m o re ve y
+much many please tell definitely anyone something
 """.split())
 
 
@@ -160,27 +161,39 @@ class Library:
     def __bool__(self) -> bool:
         return bool(self.passages)
 
+    MIN_COVERAGE = 0.3            # share of the question's (weighted) words a passage must contain
+
     def search(self, query: str, k: int = 3) -> list[dict]:
-        """Best passages for a question. Words found in most passages are ignored; matches must be relative-best."""
+        """
+        Best passages for a question. A passage must contain enough of the question's meaningful words
+        (`cov`, 0-1; words found in no document count as missing), words found in most passages are ignored,
+        and with two or more question words at least two must match.
+        """
         q = set(content_tokens(query))
         n = len(self.passages)
         if not q or not n:
             return []
+        missing_w = max(self._idf.values(), default=1.0)
+        total_w = sum(self._idf.get(t, missing_w) for t in q)
         scored = []
         for p in self.passages:
-            hits = [t for t in q if t in p["tokens"] and (n < 4 or self._df.get(t, 0) / n <= 0.5)]
-            if not hits:
+            matched = [t for t in q if t in p["tokens"]]
+            hits = [t for t in matched if n < 4 or self._df.get(t, 0) / n <= 0.5]      # words found in most passages say little
+            if not hits or (len(q) >= 3 and len(matched) < 2):
+                continue
+            cov = sum(self._idf.get(t, 0.0) for t in matched) / total_w
+            if cov < self.MIN_COVERAGE:
                 continue
             score = sum(self._idf.get(t, 0.0) for t in hits) / math.sqrt(1 + len(p["tokens"]) / 40)
-            scored.append((score, p))
+            scored.append((score, cov, p))
         if not scored:
             return []
         scored.sort(key=lambda sp: sp[0], reverse=True)
         top = scored[0][0]
         out = []
-        for score, p in scored[:k]:
+        for score, cov, p in scored[:k]:
             if score >= 0.45 * top and score >= 0.25:
-                out.append({"title": p["title"], "text": p["text"], "score": round(score, 2), "doc_id": p["doc_id"]})
+                out.append({"title": p["title"], "text": p["text"], "score": round(score, 2), "cov": round(cov, 2), "doc_id": p["doc_id"]})
         return out
 
 

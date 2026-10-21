@@ -1,0 +1,1 @@
+Billing Hub centralises patient payments and insurance claims for dental and medical clinics. It replaces the mix of card machines, spreadsheets and manual claim follow-ups with one dashboard that shows every payment, every open claim and every outstanding balance across all of a group's clinics. It is sold per clinic per month to clinic groups with five or more locations.

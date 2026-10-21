@@ -391,7 +391,13 @@ class FirestoreClient:
                 logger.error("Failed to read goals for %s: %s", user_id, e)
         return list((self._goals.get(user_id) or {}).get("goals") or [])
 
-    async def list_recent(self, limit: int = 20, user_id: Optional[str] = None) -> list[dict]:
+    async def list_recent(self, limit: int = 20, user_id: Optional[str] = None, include_practice: bool = False) -> list[dict]:
+        """Newest sessions. Practice meetings (the built-in dummy client) are left out unless asked for, so they never
+        feed progress charts, client memory, the client list or pilot statistics."""
+        rows = await self._list_recent_all(limit, user_id)
+        return rows if include_practice else [r for r in rows if not r.get("practice_meeting")]
+
+    async def _list_recent_all(self, limit: int = 20, user_id: Optional[str] = None) -> list[dict]:
         limit = max(1, min(limit, 100))
 
         if self._enabled and self._client is not None and self._firestore is not None:

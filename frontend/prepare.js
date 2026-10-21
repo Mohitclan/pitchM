@@ -77,6 +77,14 @@
     btn.disabled = false;
   });
 
+  /* ── Write my own (no AI): an empty editor, ready to paste a script into ── */
+  $('pp-own').addEventListener('click', () => {
+    editingId = null;
+    fillEditor({ name: '', text: '## Opening\n', key_points: [], hard_questions: [], objections: [], cheat_sheet: [], minutes: Number($('pp-minutes').value), client: $('pp-client').value });
+    $('pp-script').focus();
+    $('pp-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
   /* ── Save ── */
   $('pp-save').addEventListener('click', async () => {
     try {

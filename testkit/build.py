@@ -1,0 +1,100 @@
+"""Generate the dummy client's voice lines (macOS `say`) and client.html. Run: python3 build.py"""
+import html, json, subprocess
+from pathlib import Path
+
+HERE = Path(__file__).parent
+VOICE = "Samantha"
+
+# Each step: the client's line (voiced), what YOU say, and what to watch for in Meeting Mode.
+STEPS = [
+    {"id": "c1", "client": "Hi, thanks for joining. I only have about thirty minutes, so please go ahead.",
+     "you": "Read the Opening and Their situation sections of your script (6 lines). Say them in your own words if you like.",
+     "watch": "Script tab: lines fade as you speak and the next line is highlighted. Coverage % climbs."},
+    {"id": "c2", "client": "Yes, month end is painful. It takes us six days, sometimes seven.",
+     "you": "Read the What we do section (3 lines).",
+     "watch": "Client mood chip (positive / engaged). The coach may praise good discovery or suggest a next move (chatty = Active)."},
+    {"id": "c3", "client": "How much does Billing Hub cost per clinic, and is there a setup fee?",
+     "you": "Wait for the answer card, then answer using it. Also tap Answer in the coach bar once.",
+     "watch": "Answers panel: an outline with 49 dollars and no setup fee for 10+ clinics. Source line: From the company hub: Billing Hub FAQ / deck. (If it says your notes, it found Northwind notes first.)"},
+    {"id": "c4", "client": "We also use Clinic Suite for appointments. Does it work with Billing Hub, and what does Clinic Suite cost?",
+     "you": "Answer from the card: one-click sync, 199 dollars per clinic per month, 10 percent bundle discount.",
+     "watch": "You picked Billing Hub, but the client named Clinic Suite: the card should cite Company: Clinic Suite documents. This is the named-business fallback."},
+    {"id": "c5", "client": "Honestly, forty nine dollars a clinic feels expensive. We already have Zoho Books, so I am not sure we need another tool.",
+     "you": "Use the objection card. Say: annual plans get two months free, we sync to Zoho Books every night, and Brightsmile cut billing time by forty percent.",
+     "watch": "Objection card (price / current tool) showing YOUR prepared answer first. Then tap Catch up and Ask in the coach bar and read the results."},
+    {"id": "c6", "client": "Do you have SOC 2 certification? Our compliance team will definitely ask about that.",
+     "you": "Say: Good question. I will confirm that and send you the details by Friday.",
+     "watch": "Answers panel must say Not in your notes or the company hub, offer to confirm, with NO invented certification. Commitments chip: you promised to send details."},
+    {"id": "c7", "client": "Hmm. I am still not convinced this would really save us any time.",
+     "you": "Do NOT read the Proof section (skipping it is the test). Read the Price and fit section instead. Then say 'um, so, like, you know, um, basically, um' for 10 seconds on purpose.",
+     "watch": "Client mood: skeptical. Filler-word nudge in the coach bar. Then tap I'm lost in the Script tab: it should point to the next unspoken line (Proof)."},
+    {"id": "c8", "client": "Tell me more about how the setup would work for twenty two clinics.",
+     "you": "Talk without stopping for about 75 seconds: invent the rollout plan (import balances, one 60 minute training, one week in parallel, then switch).",
+     "watch": "After about a minute of you talking, a talk-time nudge (let them speak / ask a question). You and Them meters show you dominating."},
+    {"id": "c9", "client": "What happens to our data if we ever stop using it?",
+     "you": "Answer from the card: CSV export any time and for 30 days after cancelling.",
+     "watch": "Answer card sourced from the Billing Hub FAQ."},
+    {"id": "c10", "client": "Okay, that sounds reasonable. Can you send me a proposal by Friday? And let us talk again next Wednesday.",
+     "you": "Read the Next step section. Add: I will send the proposal by Friday.",
+     "watch": "Commitments list: send proposal by Friday, confirm SOC 2. Brief points tick off (pricing, Zoho, setup, pilot, follow-up)."},
+    {"id": "c11", "client": "Great, thank you. Talk soon.",
+     "you": "Say thanks and goodbye, then press Stop in Meeting Mode.",
+     "watch": "After Stop: recap (decisions, action items, open questions), follow-up email, question review with stronger answers, transcript, and the Readiness card (Ready / Almost / Not yet) with the Proof section flagged as skipped."},
+]
+
+def main():
+    (HERE / "audio").mkdir(exist_ok=True)
+    for s in STEPS:
+        aiff = HERE / "audio" / f"{s['id']}.aiff"
+        m4a = HERE / "audio" / f"{s['id']}.m4a"
+        subprocess.run(["say", "-v", VOICE, "-r", "170", "-o", str(aiff), s["client"]], check=True)
+        subprocess.run(["afconvert", "-f", "m4af", "-d", "aac", str(aiff), str(m4a)], check=True)
+        aiff.unlink()
+    cards = []
+    for i, s in enumerate(STEPS, 1):
+        cards.append(f"""
+<section class="step" id="{s['id']}">
+  <div class="num">{i}</div>
+  <div class="body">
+    <div class="who">Priya (client) says</div>
+    <div class="line">“{html.escape(s['client'])}”</div>
+    <div class="row"><button class="play" data-a="audio/{s['id']}.m4a">▶ Play</button>
+      <label class="done"><input type="checkbox"> done</label></div>
+    <div class="you"><b>You:</b> {html.escape(s['you'])}</div>
+    <div class="watch"><b>Watch for:</b> {html.escape(s['watch'])}</div>
+    <audio preload="auto" src="audio/{s['id']}.m4a"></audio>
+  </div>
+</section>""")
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dummy client: Priya (Northwind Dental)</title>
+<style>
+body{{margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;background:#f6f7f9;color:#111}}
+header{{position:sticky;top:0;background:#111827;color:#fff;padding:14px 22px;z-index:5}}
+header h1{{margin:0;font-size:18px}} header p{{margin:4px 0 0;font-size:13px;opacity:.8}}
+main{{max-width:860px;margin:0 auto;padding:18px 16px 80px}}
+.step{{display:flex;gap:14px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin:14px 0}}
+.step.finished{{opacity:.55}} .num{{width:30px;height:30px;border-radius:50%;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}}
+.who{{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#6b7280}}
+.line{{font-size:19px;font-weight:600;margin:4px 0 10px}} .row{{display:flex;align-items:center;gap:14px;margin-bottom:10px}}
+.play{{font:inherit;font-weight:700;background:#2563eb;color:#fff;border:0;border-radius:999px;padding:8px 18px;cursor:pointer}}
+.play.playing{{background:#16a34a}} .you,.watch{{font-size:14px;line-height:1.5;margin-top:6px}} .watch{{color:#374151;background:#f3f4f6;border-radius:8px;padding:8px 10px}}
+.tip{{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.5}}
+</style></head><body>
+<header><h1>Dummy client: Priya Sharma, Head of Operations, Northwind Dental</h1>
+<p>Keep this tab open. In Meeting Mode choose “Choose meeting audio” → this tab → tick “Share tab audio”. Wear headphones.</p></header>
+<main>
+<div class="tip"><b>How to run it:</b> start Meeting Mode first and press Start. Then go down this list: press <b>Play</b> to hear Priya, do the <b>You</b> part out loud, check what the notch / Answers panel shows (<b>Watch for</b>), tick “done” and move on. Wait for Priya to finish speaking before you talk. About 12 minutes in total.</div>
+{''.join(cards)}
+</main>
+<script>
+const audios=[...document.querySelectorAll('audio')];
+document.querySelectorAll('.play').forEach(btn=>{{const a=btn.closest('.step').querySelector('audio');
+  btn.addEventListener('click',()=>{{audios.forEach(x=>{{if(x!==a){{x.pause();x.currentTime=0}}}});a.currentTime=0;a.play();btn.classList.add('playing');btn.textContent='▶ Playing…'}});
+  a.addEventListener('ended',()=>{{btn.classList.remove('playing');btn.textContent='↻ Replay'}});}});
+document.querySelectorAll('.done input').forEach(c=>c.addEventListener('change',()=>c.closest('.step').classList.toggle('finished',c.checked)));
+</script></body></html>"""
+    (HERE / "client.html").write_text(page)
+    (HERE / "steps.json").write_text(json.dumps(STEPS, indent=1))
+    print("built", len(STEPS), "steps")
+
+main()
