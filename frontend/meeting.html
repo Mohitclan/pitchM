@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261020i" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261020i" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261021a" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261021a" />
   <link rel="stylesheet" href="/static/tester.css?v=20261020i" />
 </head>
 <body class="mt-page">
@@ -74,6 +74,13 @@
         <summary><b>Pre-call brief</b> (optional) — tell the coach what this meeting is about</summary>
         <div class="mt-brief-grid">
           <label class="mt-field mt-field-wide">
+            <span>Who is it with? <em>(client or company — the coach recalls your last call with them)</em></span>
+            <input id="mt-client" type="text" maxlength="80" list="mt-clients" autocomplete="off"
+              placeholder="Acme Retail" />
+            <datalist id="mt-clients"></datalist>
+          </label>
+          <div id="mt-last-call" class="mt-last-call mt-field-wide hidden" aria-live="polite"></div>
+          <label class="mt-field mt-field-wide">
             <span>Context notes</span>
             <textarea id="mt-notes" rows="4" maxlength="6000"
               placeholder="Client: Acme Retail (Priya, Head of Ops). Agenda: pricing for 40 stores, pilot timeline. They use spreadsheets today; worried about setup time."></textarea>
@@ -95,6 +102,16 @@
             </select>
           </label>
           <p class="mt-brief-help">The coach ticks off points as you cover them and reminds you of anything missed near the end.</p>
+        </div>
+        <div class="mt-rehearse" id="mt-rehearse">
+          <div class="mt-rehearse-head">
+            <div>
+              <b>Rehearse this call</b> <span class="mt-rehearse-tag">2 min</span>
+              <span class="mt-rehearse-sub">The AI plays the other side and asks the hardest questions from your brief. Answer out loud.</span>
+            </div>
+            <button id="mt-rehearse-btn" type="button" class="mt-btn mt-btn-ghost">Start rehearsal</button>
+          </div>
+          <div id="mt-rehearse-body" class="mt-rehearse-body hidden" aria-live="polite"></div>
         </div>
       </details>
 
@@ -131,6 +148,11 @@
       <div id="mt-points-panel" class="mt-points-panel hidden">
         <div class="mt-label">Points to cover <span id="mt-points-count" class="mt-points-count"></span></div>
         <ul id="mt-points-list" class="mt-points-list"></ul>
+      </div>
+
+      <div id="mt-commit-panel" class="mt-points-panel mt-commit-panel hidden">
+        <div class="mt-label">Commitments <span id="mt-commit-count" class="mt-points-count"></span></div>
+        <ul id="mt-commit-list" class="mt-commit-list"></ul>
       </div>
 
       <div class="mt-live-grid">
@@ -203,6 +225,7 @@
             <span class="pm-stat pm-points-stat hidden"><b class="pm-points-done">0/0</b> points</span>
           </div>
           <div class="pm-points hidden"><span class="pm-points-label">To cover:</span> <span class="pm-points-left"></span></div>
+          <div class="pm-commits hidden"><span class="pm-points-label">Promised:</span> <span class="pm-commits-text"></span></div>
           <div class="pm-meters" aria-hidden="true">
             <span class="pm-meter-label">You</span><span class="pm-meter"><i class="pm-meter-you"></i></span>
             <span class="pm-meter-label">Them</span><span class="pm-meter"><i class="pm-meter-them"></i></span>
@@ -245,6 +268,7 @@
   <script src="/static/tester.js?v=20261020i"></script>
   <script src="/static/audio-leveler.js?v=20261020i"></script>
   <script src="/static/gaze.js?v=20261020i"></script>
-  <script src="/static/meeting.js?v=20261020i"></script>
+  <script src="/static/rehearse.js?v=20261021a"></script>
+  <script src="/static/meeting.js?v=20261021a"></script>
 </body>
 </html>

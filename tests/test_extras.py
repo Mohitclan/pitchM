@@ -1,0 +1,205 @@
+"""Tests for the meeting/practice extras: talk time, commitments, past-call memory,
+rehearsal, rewrites, trends, goals and recap export."""
+import asyncio
+
+
+def _drain(state):
+    return [state.ws_event_queue.get_nowait() for _ in range(state.ws_event_queue.qsize())]
+
+
+def test_commitment_detection_and_parsing():
+    from backend import coach_extras as cx
+    assert cx.looks_like_commitment("Sure, I'll send you the pricing deck by Friday.")
+    assert cx.looks_like_commitment("Let me check with legal and get back to you")
+    assert not cx.looks_like_commitment("Let me explain how it works")
+    assert not cx.looks_like_commitment("I will")                      # too short
+    items = cx.parse_commitments("COMMIT: Send the pricing deck | Friday\nCOMMIT: Book a demo | -\nnoise")
+    assert items == [{"task": "Send the pricing deck", "due": "Friday"}, {"task": "Book a demo", "due": ""}]
+    assert cx.parse_commitments("NONE") == []
+    assert cx.fallback_commitment("Thanks. I'll send the deck tonight. Bye.")["task"] == "I'll send the deck tonight."
+    existing = [{"task": "Send the pricing deck"}]
+    assert cx.is_duplicate_commitment("send pricing deck", existing)
+    assert not cx.is_duplicate_commitment("Schedule the pilot kickoff", existing)
+
+
+def test_commitments_are_tracked_live(monkeypatch):
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-commit", session_kind="meeting")
+
+    async def fake_quick(prompt, **kw):
+        return "COMMIT: Send the pricing deck | Friday"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    asyncio.run(m._extract_commitments(s, "user", "Great, I'll send the pricing deck by Friday."))
+    asyncio.run(m._extract_commitments(s, "user", "Yes I will send you the pricing deck."))   # duplicate
+    assert [(c["owner"], c["task"], c["due"]) for c in s.commitments] == [("you", "Send the pricing deck", "Friday")]
+    msgs = [x for x in _drain(s) if x.get("type") == "commitments"]
+    assert len(msgs) == 1 and msgs[0]["added"][0]["task"] == "Send the pricing deck"
+
+    async def no_model(prompt, **kw):
+        return ""
+
+    monkeypatch.setattr(m, "_quick_text", no_model)                    # no text model: keep the sentence
+    asyncio.run(m._extract_commitments(s, "other", "We will get you the security questionnaire next week."))
+    assert s.commitments[-1]["owner"] == "them" and "questionnaire" in s.commitments[-1]["task"]
+
+
+def test_talk_time_monologue_and_share():
+    import backend.main as m
+    from backend.session_state import SessionState
+    from backend.agents.tools import make_coaching_tools
+    s = SessionState(session_id="t-talk", session_kind="meeting", coach_mode="sales_demo")
+    make_coaching_tools(s)
+    m._record_talk_time(s, {"kind": "monologue", "seconds": 40})       # under the limit: ignored
+    assert not s.events
+    m._record_talk_time(s, {"kind": "monologue", "seconds": 95})
+    assert s.events[-1].event_type == "monologue" and s.events[-1].source == "sensor"
+    assert any(x.get("type") == "coach_cue" for x in _drain(s))
+    m._record_talk_time(s, {"kind": "talk_share", "share": 0.9})       # other side not heard yet: ignored
+    assert len(s.events) == 1
+    m._record_talk_time(s, {"kind": "stats", "you_s": 300, "them_s": 100, "longest_monologue_s": 95})
+    assert s.talk_stats["you_share"] == 0.75 and s.talk_stats["longest_monologue_s"] == 95
+
+    p = SessionState(session_id="t-pres", session_kind="meeting", coach_mode="presentation")
+    make_coaching_tools(p)
+    m._record_talk_time(p, {"kind": "monologue", "seconds": 400})     # presentations: one long turn is fine
+    assert not p.events
+
+
+def test_previous_call_summary_and_context():
+    from backend import coach_extras as cx
+    payload = {
+        "session_id": "s1", "created_at": 1_700_000_000, "client": "Acme Retail", "session_kind": "meeting",
+        "recap": {"summary": "Discussed pricing.", "open_questions": ["Volume discount?"],
+                  "client_signals": ["Worried about setup time"],
+                  "action_items": [{"owner": "You", "task": "Send case study", "due": ""}]},
+        "commitments": [{"owner": "you", "task": "Send pricing deck"}, {"owner": "them", "task": "Share store list"}],
+    }
+    prev = cx.previous_call_summary(payload)
+    assert prev["promised"] == ["Send pricing deck", "Send case study"]
+    assert prev["their_commitments"] == ["Share store list"] and prev["objections"] == ["Worried about setup time"]
+    ctx = cx.previous_call_context(prev)
+    assert "Last call with Acme Retail" in ctx and "You promised: Send pricing deck" in ctx
+    assert cx.client_key("  acme   RETAIL ") == "acme retail"
+
+
+def test_rehearsal_and_rewrite_parsing():
+    from backend import coach_extras as cx
+    qs = cx.parse_rehearsal_questions(
+        "Q: Why should we pay more than our current tool? | price vs status quo\n"
+        "Q2: How long does setup take for 40 stores? | effort\nfiller line\n3. What if it fails? | risk")
+    assert [q["question"] for q in qs] == [
+        "Why should we pay more than our current tool?", "How long does setup take for 40 stores?", "What if it fails?"]
+    assert qs[0]["why"] == "price vs status quo"
+    assert len(cx.fallback_questions("unknown")) == 3
+    rw = cx.parse_rewrites('```json\n[{"ts": 12, "original": "so um we kind of help", "rewrite": "We help stores.", "why": "direct"}, {"x": 1}]\n```')
+    assert rw == [{"original": "so um we kind of help", "rewrite": "We help stores.", "why": "direct", "ts": 12.0}]
+    assert cx.parse_rewrites("nope") == []
+
+
+def test_trend_point_and_goals():
+    from backend import coach_extras as cx
+    payload = {
+        "session_id": "s", "created_at": 1, "session_kind": "practice", "duration_seconds": 120, "overall_score": 72,
+        "categories": {"filler_words": {"count": 6}, "eye_contact": {"drops": 2}},
+        "transcript": [{"s": "u", "t": " ".join(["word"] * 300)}, {"s": "c", "t": "coach line"}],
+    }
+    pt = cx.session_trend_point(payload)
+    assert pt["fillers_per_min"] == 3.0 and pt["wpm"] == 150 and pt["eye_drops_per_min"] == 1.0 and pt["score"] == 72
+    meeting = dict(payload, session_kind="meeting", talk_stats={"you_s": 60})
+    assert cx.session_trend_point(meeting)["wpm"] == 300                # pace over your own talking time
+    assert cx.session_trend_point(dict(payload, insufficient_speech=True))["score"] is None
+    goals = cx.clean_goals([{"metric": "fillers_per_min", "target": "3"}, {"metric": "fillers_per_min", "target": 2},
+                            {"metric": "bogus", "target": 1}, {"metric": "score", "target": -5}, "x"])
+    assert [(g["metric"], g["target"]) for g in goals] == [("fillers_per_min", 3.0)]
+
+
+def test_scorecard_carries_extras():
+    import time
+    from backend.session_state import SessionState
+    from backend.scorecard import build_scorecard
+    s = SessionState(session_id="t-sc", session_kind="meeting")
+    s.session_start = time.time() - 120
+    s.add_transcript("user", " ".join(["hello"] * 40))
+    s.client_name = "Acme"
+    s.commitments = [{"ts": 3, "owner": "you", "task": "Send deck", "due": ""}]
+    s.talk_stats = {"you_s": 60, "them_s": 40, "you_share": 0.6}
+    sc = build_scorecard(s)
+    assert sc["client"] == "Acme" and sc["commitments"][0]["task"] == "Send deck" and sc["talk_stats"]["you_share"] == 0.6
+    s2 = SessionState(session_id="t-sc2")
+    s2.session_start = time.time() - 30
+    assert build_scorecard(s2)["insufficient_speech"] and build_scorecard(s2)["commitments"] == []
+
+
+def test_brief_sets_client_and_loads_previous_call(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "pc.db"))
+    store = db.FirestoreClient()
+    monkeypatch.setattr(m, "_db", store)
+
+    async def run():
+        await store.save_session("old-1", {"user_id": "u1", "created_at": 10, "session_kind": "meeting", "client": "Acme Retail",
+                                           "recap": {"summary": "Pricing call.", "open_questions": ["Discount?"]}})
+        await store.save_session("old-2", {"user_id": "u1", "created_at": 20, "session_kind": "meeting", "client": "Other Co"})
+        s = SessionState(session_id="new", user_id="u1", session_kind="meeting")
+        m._apply_brief(s, {"client": "acme retail", "notes": "", "points": ["Agree pilot"]})
+        await asyncio.sleep(0.05)
+        return s
+
+    s = asyncio.run(run())
+    assert s.client_name == "acme retail" and s.previous_call["session_id"] == "old-1"
+    assert "Still open from last time: Discount?" in m._brief_block(s)
+    assert any(x.get("type") == "previous_call" for x in _drain(s))
+
+
+def test_extras_api(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import backend.main as m
+    from backend import db
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "api.db"))
+    store = db.FirestoreClient()
+    monkeypatch.setattr(m, "_db", store)
+    asyncio.run(store.save_session("m-1", {
+        "user_id": "tester-a", "created_at": 50, "session_kind": "meeting", "client": "Acme", "duration_seconds": 300,
+        "overall_score": 70, "categories": {"filler_words": {"count": 5}}, "transcript": [{"s": "u", "t": "hi " * 100}],
+        "recap": {"summary": "Good call.", "action_items": [{"owner": "You", "task": "Send deck", "due": "Fri"}]},
+    }))
+    client = TestClient(m.app)
+    h = {"x-user-id": "tester-a"}
+
+    assert client.get("/api/clients", headers=h).json()["clients"][0]["name"] == "Acme"
+    assert client.get("/api/clients/last?name=ACME", headers=h).json()["call"]["promised"] == ["Send deck"]
+    assert client.get("/api/clients/last?name=Acme", headers={"x-user-id": "someone-else"}).json()["call"] == {}
+
+    pts = client.get("/api/sessions/trends", headers=h).json()["points"]
+    assert pts[0]["fillers_per_min"] == 1.0
+
+    assert client.get("/api/goals", headers=h).json()["goals"] == []
+    put = client.put("/api/goals", json={"goals": [{"metric": "score", "target": 75}]}, headers=h)
+    assert put.status_code == 200
+    got = client.get("/api/goals", headers=h).json()
+    assert got["goals"][0]["target"] == 75 and got["metrics"]["score"]["direction"] == "min"
+
+    async def fake_quick(prompt, **kw):
+        return "Q: Why is this worth the price? | cost\nQ: How fast is setup really? | effort\nQ: Who else uses it? | proof"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    qs = client.post("/api/rehearsal/questions", json={"mode": "sales_demo", "client": "Acme"}, headers=h).json()
+    assert qs["source"] == "ai" and len(qs["questions"]) == 3
+
+    async def fake_review(prompt, **kw):
+        return '[{"index": 0, "rating": 3, "verdict": "Partly", "improve": "Lead with ROI", "better_answer": "It pays back in 3 months."}]'
+
+    monkeypatch.setattr(m, "_quick_text", fake_review)
+    rv = client.post("/api/rehearsal/review", json={"mode": "sales_demo", "items": [
+        {"question": "Why is this worth it?", "answer": "Because um it is good"}, {"question": "Unanswered?", "answer": ""}]},
+        headers=h).json()["review"]
+    assert len(rv) == 1 and rv[0]["rating"] == 3 and rv[0]["better_answer"].startswith("It pays back")
+
+    assert client.post("/api/sessions/m-1/export", headers=h).status_code == 404   # no webhook configured
+    assert client.get("/api/config").json()["export_webhook"] is False

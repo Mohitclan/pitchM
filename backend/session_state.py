@@ -150,6 +150,15 @@ class SessionState:
     # Live read of the other participant: [{ts, mood, reason}]
     client_moods: list[dict] = field(default_factory=list)
     interruptions: int = 0
+    # Who the meeting is with (pre-call brief) and what was said last time with them.
+    client_name: str = ""
+    previous_call: dict = field(default_factory=dict)
+    # Promises made during the call: [{ts, owner: "you" | "them", task, due}]
+    commitments: list[dict] = field(default_factory=list)
+    # Voice-activity talk time reported by the browser: {you_s, them_s, you_share, longest_monologue_s}
+    talk_stats: dict = field(default_factory=dict)
+    # Practice: weakest passages rewritten stronger [{original, rewrite, why, ts}]
+    rewrites: list[dict] = field(default_factory=list)
     # Per-stream transcriber stats (segments, connects, rollovers, stalls, errors).
     transcription_health: dict = field(default_factory=dict)
     screen_enabled: bool = False

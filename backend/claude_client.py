@@ -84,9 +84,9 @@ async def report_text(system: str, user: str, *, max_tokens: int = 16000) -> str
     return _text_of(response)
 
 
-async def fast_text(prompt: str, *, max_tokens: int = 400) -> str:
+async def fast_text(prompt: str, *, max_tokens: int = 400, timeout: float | None = None) -> str:
     """Short, latency-sensitive answers on the fast model (thinking off, low effort)."""
-    client = _get_client().with_options(timeout=FAST_TIMEOUT_S)
+    client = _get_client().with_options(timeout=timeout or FAST_TIMEOUT_S)
     response = await client.messages.create(
         model=FAST_MODEL,
         max_tokens=max_tokens,

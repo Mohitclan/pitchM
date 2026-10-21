@@ -60,6 +60,8 @@ _VALID_ISSUE_TYPES = frozenset({
     "monotone",
     "confidence",
     "interruption",
+    "monologue",
+    "talk_share",
     "filler",
     "pace",
     "eye_contact",

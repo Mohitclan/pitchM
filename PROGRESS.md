@@ -277,3 +277,50 @@ gemini-3.1-flash-lite). No repair retry when every model already failed. End-to-
 - Fix (user report): End button was clipped at the card's right edge (action row wider than the card).
   Action row is now two groups (`.pm-help-group`, `.pm-ctl-group`) that wrap onto two lines when needed;
   End is a labelled red pill (`■ End`). Verified fully visible at S/M/L, PiP width and a 330 px card.
+
+## Meeting + practice extras — 2026-10-21
+
+Nine features from the "what more can we add" list. Helpers (prompts, parsers, calculations) live in the new
+`backend/coach_extras.py`; wiring is in `backend/main.py`. Tests: `tests/test_extras.py` (78 total passing).
+
+**Meeting Mode**
+- **Talk time / monologue.** The browser measures voice activity (100 ms chunks). Holding the floor past the
+  mode's limit (sales/general 90 s, pitch/interview 120 s, none for presentations) sends
+  `{type:"talk_time", kind:"monologue"}`; over 75 % of the talking in the last 5 min (sales/general, meeting audio
+  shared) sends `kind:"talk_share"`. The server flags `monologue` / `talk_share` through the normal cooldowns
+  (`_record_talk_time`) and cues back. `kind:"stats"` every 15 s → `talk_stats` (you/them seconds, share,
+  longest stretch) shown in the recap. Replaces the old local 2-minute "wrap up" nudge.
+- **Commitments tracker.** Every finished line that matches `PROMISE_RE` gets a Haiku check
+  (`_extract_commitments`; sentence kept as-is if no text model). New `commitments` WS message → page list +
+  notch row "Promised:" + a "🤝 Noted" nudge. Fed into the recap agent (action items + follow-up email).
+- **Past-call memory.** Brief has a "Who is it with?" field (autocomplete from `/api/clients`). Setup page shows
+  the last call with that client (`/api/clients/last`: summary, still-open questions, their concerns, your
+  promises). During the call the server loads it (`previous_call` WS message → hint card) and every live helper
+  and the recap get it via `_brief_block()`. Sessions now save `client`.
+- **Pre-call rehearsal.** "Rehearse this call" in the brief: `/api/rehearsal/questions` (3 hardest questions
+  from the brief + last call; fixed fallbacks without a model), read aloud with the browser voice, answers
+  transcribed through a new transcription-only socket `/ws?kind=rehearsal` (nothing saved), then
+  `/api/rehearsal/review` (QA reviewer prompt) → side-by-side "You said / Stronger answer" cards.
+  Echo of the question through laptop speakers is filtered by keyword overlap.
+- **Export the recap.** Review page: Copy for Notion/docs (Markdown), Download .md, Email follow-up, and
+  "Send to <label>" when `PITCHMIRROR_EXPORT_WEBHOOK_URL` is set (POSTs the recap JSON — Zapier/Make/CRM hook;
+  label from `PITCHMIRROR_EXPORT_WEBHOOK_LABEL`). Not set yet.
+
+**Practice app**
+- **Progress over time.** History opens with four small line charts (fillers/min, wpm, look-aways/min, score),
+  filter Practice / Meetings / All, hover tooltip, table view, click a point to open that session
+  (`/api/sessions/trends`; meeting pace uses your own talking time).
+- **Practice goals.** `/api/goals` (new SQLite `goals` table): presets or custom metric + target, weekly progress
+  bars (Monday-start), goal line on the charts, and a "Goals" pass/fail row under each new score.
+- **Replay with markers.** Timeline markers are clickable (and keyboard-focusable); the scrubber and markers
+  scroll the review transcript to that moment and flash the line. Commitments appear as green markers.
+- **Side-by-side rewrite.** Meetings: the Q&A review shows your answer next to the stronger one. Practice: new
+  `REWRITE_AGENT` picks 2–3 weakest passages ("Say it better"). Both have 🔊 Read it aloud and 🎙 Retry it
+  (records via the rehearsal socket; instant words / wpm / fillers / key-words-used check, no AI call).
+
+**Other fixes in passing:** `/api/sessions/trends` must be registered before `/api/sessions/{session_id}`;
+`escapeHtml` in app.js now escapes quotes (it is used inside attributes).
+
+**Not yet tested live:** a real call with commitments/talk-share/previous-call, a spoken rehearsal and a retry
+(the in-app browser has no mic — test in Chrome). Cost: rehearsal ≈ 2 Haiku calls; commitments ≈ 1 Haiku call
+per promise-like line; rewrites 1 report call per practice session.

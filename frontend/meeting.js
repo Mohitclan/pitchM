@@ -29,7 +29,15 @@
   const SETTINGS_KEY = 'pitchmirror_meeting_settings';
   const SIZE_KEY = 'pitchmirror_bubble_size';
   const PREFS_KEY = 'pitchmirror_bubble_prefs';
-  const ANSWER_WRAP_S = 120;          // nudge to wrap up an answer after 2 minutes
+  // Holding the floor this long gets a "check in" nudge (none for presentations: one long turn by design).
+  const MONOLOGUE_LIMIT_S = { sales_demo: 90, general: 90, pitch: 120, interview: 120 };
+  const TALK_SHARE_MODES = ['sales_demo', 'general'];   // two-way conversations only
+  const TALK_SHARE_WINDOW_MS = 300000;  // talk share over the last 5 minutes…
+  const TALK_SHARE_MIN_S = 90;          // …once at least 90 s of talking happened in it
+  const TALK_SHARE_LIMIT = 0.75;
+  const TALK_SHARE_GAP_MS = 240000;     // at most one talk-share report per 4 minutes
+  const TALK_STATS_EVERY_MS = 15000;
+  const VOICE_CHUNK_S = 0.1;
   const IDLE_DIM_MS = 15000;          // dim the bubble after 15 s with nothing new
   const YOU_VOICE_RMS = 0.03;         // mic level that counts as you speaking (headphones assumed)
   const THEM_VOICE_RMS = 0.012;       // meeting-audio level that counts as them speaking
@@ -43,6 +51,7 @@
     filler: 'Filler words', pace: 'Pace', eye_contact: 'Eye contact',
     contradiction: 'Contradiction', clarity: 'Clarity', off_topic: 'Off topic',
     rambling: 'Rambling', monotone: 'Flat tone', confidence: 'Hedging', interruption: 'Interrupted',
+    monologue: 'Long monologue', talk_share: 'Talk time',
   };
   const DEFAULT_CUES = {
     filler: 'Pause instead of fillers.',
@@ -55,6 +64,8 @@
     monotone: 'Add energy — vary your tone.',
     confidence: 'Drop the hedging — be direct.',
     interruption: 'Let them finish.',
+    monologue: 'Long answer — pause and ask them a question.',
+    talk_share: "You're doing most of the talking — ask and listen.",
   };
   const GAZE_TEXT = { camera: 'eyes ✓', away: 'looking away', notes: 'looking down', no_face: 'out of frame' };
 
@@ -90,6 +101,14 @@
   const pointsCount = $('mt-points-count');
   const otherBtn = $('mt-other-btn');
   const otherStatusEl = $('mt-other-status');
+  const clientField = $('mt-client');
+  const clientsList = $('mt-clients');
+  const lastCallEl = $('mt-last-call');
+  const commitPanel = $('mt-commit-panel');
+  const commitList = $('mt-commit-list');
+  const commitCount = $('mt-commit-count');
+  const rehearseBtn = $('mt-rehearse-btn');
+  const rehearseBody = $('mt-rehearse-body');
 
   /* ── State ───────────────────────────────────────── */
   let ws = null;
@@ -125,18 +144,25 @@
   try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; } catch (_) { /* ignore */ }
   let gazeState = null;
   const eventCards = new Map();
+  // Talk time from voice activity (100 ms chunks): totals, recent windows, longest turn.
+  let youVoicedS = 0, themVoicedS = 0;
+  let youVoiceTimes = [], themVoiceTimes = [];
+  let longestMonologueS = 0, lastShareReportAt = 0, lastStatsSentAt = 0;
+  let commitments = [];
 
   /* ── Settings persistence ───────────────────────── */
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     for (const k of ['mode', 'platform', 'persona']) if (saved[k]) fields[k].value = saved[k];
     if (typeof saved.camera === 'boolean') fields.camera.checked = saved.camera;
+    if (saved.client && clientField) clientField.value = saved.client;
   } catch (_) { /* ignore */ }
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         mode: fields.mode.value, platform: fields.platform.value,
-        persona: fields.persona.value, camera: fields.camera.checked
+        persona: fields.persona.value, camera: fields.camera.checked,
+        client: (clientField?.value || '').trim(),
       }));
     } catch (_) { /* ignore */ }
   }
@@ -327,10 +353,11 @@
     const notes = (briefFields.notes?.value || '').trim();
     const points = (briefFields.points?.value || '').split('\n').map((x) => x.trim()).filter(Boolean);
     const minutes = Number(briefFields.minutes?.value || 0);
+    const client = (clientField?.value || '').trim();
     plannedMinutes = minutes;
-    if (!notes && !points.length) return;
+    if (!notes && !points.length && !client) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'brief', notes, points, planned_minutes: minutes }));
+      ws.send(JSON.stringify({ type: 'brief', notes, points, planned_minutes: minutes, client }));
     }
   }
 
@@ -381,7 +408,7 @@
     const card = document.createElement('div');
     card.className = 'mt-nudge type-hint';
     card.innerHTML = `
-      <div class="mt-nudge-head"><span class="mt-line-time">${fmt(msg.ts || elapsed())}</span><b>Answer outline</b></div>
+      <div class="mt-nudge-head"><span class="mt-line-time">${fmt(msg.ts || elapsed())}</span><b>${esc(label.replace(/^\S+\s/, ''))}</b></div>
       <div class="mt-nudge-desc">${esc(msg.question || '')}</div>
       <ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`;
     nudgesEl.prepend(card);
@@ -571,8 +598,11 @@
     }
     const talkEl = b('.pm-talk');
     if (talkEl) {
+      const voiced = youVoicedS + themVoicedS;
       const total = youWords + themWords;
-      const share = total >= 20 && themWords > 0 ? Math.round((youWords / total) * 100) : null;
+      const share = otherStream && voiced >= 20 && themVoicedS > 0
+        ? Math.round((youVoicedS / voiced) * 100)
+        : (total >= 20 && themWords > 0 ? Math.round((youWords / total) * 100) : null);
       talkEl.textContent = share == null ? '–' : `${share}%`;
       talkEl.classList.toggle('warn', share != null && share > 75);   // monologue in a conversation
     }
@@ -587,6 +617,7 @@
     if (t) t.textContent = fmt(elapsed());
     renderAgenda();
     renderAnswerTimer();
+    checkTalkShare();
     timerEl.textContent = fmt(elapsed());
   }
 
@@ -626,12 +657,46 @@
     chip.classList.toggle('hidden', !answering);
     if (!answering) return;
     const secs = (now - answerStart) / 1000;
-    chip.textContent = `Answering ${fmt(secs).replace(/^0/, '')}`;
-    chip.classList.toggle('long', secs >= ANSWER_WRAP_S);
-    if (secs >= ANSWER_WRAP_S && !answerWrapShown) {
+    const limit = MONOLOGUE_LIMIT_S[fields.mode.value];
+    longestMonologueS = Math.max(longestMonologueS, secs);
+    chip.textContent = `Talking ${fmt(secs).replace(/^0/, '')}`;
+    chip.classList.toggle('long', !!limit && secs >= limit);
+    if (limit && secs >= limit && !answerWrapShown) {
       answerWrapShown = true;
-      showNudge('Wrap up — make your point and check in.', 'alert');
+      // The server records it (History + recap) and sends the nudge back through its cooldowns.
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'talk_time', kind: 'monologue', seconds: Math.round(secs) }));
+      } else {
+        showNudge(DEFAULT_CUES.monologue, 'alert');
+      }
     }
+  }
+
+  /** "You've done most of the talking": over the last 5 minutes, once the other side is shared. */
+  function checkTalkShare() {
+    const now = Date.now();
+    youVoiceTimes = youVoiceTimes.filter((t) => now - t <= TALK_SHARE_WINDOW_MS);
+    themVoiceTimes = themVoiceTimes.filter((t) => now - t <= TALK_SHARE_WINDOW_MS);
+    if (!ws || ws.readyState !== WebSocket.OPEN || paused) return;
+    if (now - lastStatsSentAt >= TALK_STATS_EVERY_MS) sendTalkStats();
+    if (!otherStream || !TALK_SHARE_MODES.includes(fields.mode.value) || now - lastShareReportAt < TALK_SHARE_GAP_MS) return;
+    const you = youVoiceTimes.length * VOICE_CHUNK_S;
+    const them = themVoiceTimes.length * VOICE_CHUNK_S;
+    if (you + them < TALK_SHARE_MIN_S || them <= 0) return;
+    const share = you / (you + them);
+    if (share >= TALK_SHARE_LIMIT) {
+      lastShareReportAt = now;
+      ws.send(JSON.stringify({ type: 'talk_time', kind: 'talk_share', share: Number(share.toFixed(3)) }));
+    }
+  }
+
+  function sendTalkStats() {
+    lastStatsSentAt = Date.now();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: 'talk_time', kind: 'stats', you_s: Number(youVoicedS.toFixed(1)),
+      them_s: Number(themVoicedS.toFixed(1)), longest_monologue_s: Math.round(longestMonologueS),
+    }));
   }
 
   /* ── Transcript + nudges on the page ───────────── */
@@ -736,6 +801,12 @@
       case 'brief_reminder':
         showBriefReminder(msg.points);
         break;
+      case 'commitments':
+        renderCommitments(msg.items, msg.added);
+        break;
+      case 'previous_call':
+        showPreviousCall(msg.call);
+        break;
       case 'coach_cue':
         setCue(msg.index, msg.text);
         showNudge(msg.text, 'alert', { index: Number(msg.index) });
@@ -752,6 +823,295 @@
       default:
         break;
     }
+  }
+
+  /* ── Commitments ────────────────────────────────── */
+  function renderCommitments(items, added) {
+    commitments = Array.isArray(items) ? items : [];
+    const mine = commitments.filter((c) => c.owner === 'you');
+    commitPanel.classList.toggle('hidden', !commitments.length);
+    commitCount.textContent = commitments.length
+      ? `${mine.length} by you · ${commitments.length - mine.length} by them` : '';
+    commitList.innerHTML = commitments.map((c) => `
+      <li class="${c.owner === 'you' ? 'is-you' : 'is-them'}">
+        <span class="mt-line-time">${fmt(c.ts || 0)}</span>
+        <b>${c.owner === 'you' ? 'You' : 'Them'}</b> ${esc(c.task)}${c.due ? ` <em>· ${esc(c.due)}</em>` : ''}
+      </li>`).join('');
+    const row = b('.pm-commits');
+    if (row) {
+      row.classList.toggle('hidden', !mine.length);
+      const latest = mine[mine.length - 1];
+      row.querySelector('.pm-commits-text').textContent = latest
+        ? `${latest.task}${latest.due ? ` (${latest.due})` : ''}${mine.length > 1 ? ` +${mine.length - 1} more` : ''}` : '';
+    }
+    const newMine = (added || []).filter((c) => c.owner === 'you');
+    if (newMine.length) {
+      const c = newMine[newMine.length - 1];
+      showNudge(`🤝 Noted: ${c.task}${c.due ? ` (${c.due})` : ''}`, 'nudge', { urgent: true });
+    }
+    fitPipWindow();
+  }
+
+  /* ── Past-call memory ───────────────────────────── */
+  function apiHeaders(json) {
+    const h = { 'x-user-id': USER_ID };
+    const token = (localStorage.getItem('pitchmirror_api_token') || '').trim();
+    if (token) h.Authorization = `Bearer ${token}`;
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+  }
+
+  const callDate = (ts) => (ts ? new Date(Number(ts) * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
+
+  /** During the call: the last call's open items, once, as a hint card. */
+  function showPreviousCall(call) {
+    if (!call) return;
+    const points = [
+      ...(call.promised || []).slice(0, 2).map((t) => `You promised: ${t}`),
+      ...(call.open_questions || []).slice(0, 2).map((t) => `Still open: ${t}`),
+      ...(call.objections || []).slice(0, 1).map((t) => `Their concern: ${t}`),
+    ].slice(0, 3);
+    if (points.length) showHint({ points, question: call.summary ? call.summary.split(/(?<=\.)\s/)[0] : '' }, `↺ Last call · ${callDate(call.created_at)}`);
+  }
+
+  async function loadClients() {
+    if (!clientsList) return;
+    try {
+      const resp = await fetch('/api/clients', { headers: apiHeaders() });
+      if (!resp.ok) return;
+      const { clients } = await resp.json();
+      clientsList.innerHTML = (clients || []).map((c) => `<option value="${esc(c.name)}">`).join('');
+    } catch (_) { /* offline: no suggestions */ }
+  }
+
+  let lastCallTimer = null, lastCallFor = '';
+  function scheduleLastCall() {
+    clearTimeout(lastCallTimer);
+    lastCallTimer = setTimeout(loadLastCall, 500);
+  }
+
+  async function loadLastCall() {
+    const name = (clientField?.value || '').trim();
+    if (name.toLowerCase() === lastCallFor) return;
+    lastCallFor = name.toLowerCase();
+    if (name.length < 2) { lastCallEl.classList.add('hidden'); return; }
+    try {
+      const resp = await fetch(`/api/clients/last?name=${encodeURIComponent(name)}`, { headers: apiHeaders() });
+      const call = resp.ok ? (await resp.json()).call : null;
+      if (lastCallFor !== name.toLowerCase()) return;   // typed on meanwhile
+      if (!call || !call.session_id) {
+        lastCallEl.classList.add('hidden');
+        return;
+      }
+      const list = (title, items) => (items && items.length
+        ? `<div class="mt-lc-block"><b>${title}</b><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '');
+      lastCallEl.innerHTML = `
+        <div class="mt-lc-head">↺ Last call with ${esc(call.client || name)} · ${esc(callDate(call.created_at))}
+          <a href="/app?session=${encodeURIComponent(call.session_id)}" target="_blank" rel="noopener">Open review →</a></div>
+        ${call.summary ? `<p class="mt-lc-summary">${esc(call.summary)}</p>` : ''}
+        <div class="mt-lc-grid">
+          ${list('You promised', call.promised)}
+          ${list('Still open', call.open_questions)}
+          ${list('Their concerns', call.objections)}
+        </div>
+        <p class="mt-lc-note">The coach will remind you of these when the call starts.</p>`;
+      lastCallEl.classList.remove('hidden');
+    } catch (_) {
+      lastCallEl.classList.add('hidden');
+    }
+  }
+
+  /* ── Pre-call rehearsal ─────────────────────────── */
+  const REHEARSE_ANSWER_S = 40;   // ~3 questions in about 2 minutes
+  let rehearsal = null;           // { questions, idx, answers[], listener, qStartedAt, graceUntil, timer }
+
+  function briefPayload() {
+    return {
+      mode: fields.mode.value,
+      client: (clientField?.value || '').trim(),
+      notes: (briefFields.notes?.value || '').trim(),
+      points: (briefFields.points?.value || '').split('\n').map((x) => x.trim()).filter(Boolean),
+    };
+  }
+
+  async function startRehearsal() {
+    if (rehearsal) { stopRehearsal(); return; }
+    rehearseBody.classList.remove('hidden');
+    rehearseBody.innerHTML = '<div class="mt-rh-wait">Picking the hardest questions for this call…</div>';
+    rehearseBtn.disabled = true;
+    let questions = [];
+    try {
+      const resp = await fetch('/api/rehearsal/questions', {
+        method: 'POST', headers: apiHeaders(true), body: JSON.stringify(briefPayload()),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      questions = (await resp.json()).questions || [];
+    } catch (err) {
+      rehearseBody.innerHTML = '<div class="mt-rh-error">Couldn\'t prepare questions right now — try again in a moment.</div>';
+      rehearseBtn.disabled = false;
+      return;
+    }
+    rehearsal = { questions, idx: 0, answers: questions.map(() => ''), listener: null, qStartedAt: Date.now(), graceUntil: 0, timer: null };
+    rehearseBtn.disabled = false;
+    rehearseBtn.textContent = 'Stop rehearsal';
+    renderRehearsal();
+    try {
+      rehearsal.listener = await window.PMRehearse.listen({
+        userId: USER_ID,
+        onText: onRehearsalText,
+        onStatus: (st, message) => {
+          if (st === 'failed' && rehearsal) {
+            rehearseBody.querySelector('.mt-rh-live')?.replaceChildren(document.createTextNode(message || 'Speech-to-text stopped working.'));
+          }
+        },
+      });
+    } catch (err) {
+      stopRehearsal(true);
+      rehearseBody.innerHTML = '<div class="mt-rh-error">Microphone access was blocked, so the rehearsal can\'t hear you. Allow the mic and try again.</div>';
+      return;
+    }
+    rehearsal.timer = setInterval(renderRehearsalTimer, 500);
+    askCurrentQuestion();
+  }
+
+  async function askCurrentQuestion() {
+    const r = rehearsal;
+    if (!r) return;
+    r.qStartedAt = Date.now();
+    r.graceUntil = Math.max(r.graceUntil, Date.now() + 3000);
+    renderRehearsal();
+    await window.PMRehearse.speak(r.questions[r.idx].question);
+    if (rehearsal === r) {
+      // Lines that come back right after the question was read are the previous answer's tail.
+      r.graceUntil = Math.max(r.graceUntil, Date.now() + 800);
+      r.qStartedAt = Date.now();
+    }
+  }
+
+  function onRehearsalText(text) {
+    const r = rehearsal;
+    if (!r) return;
+    // Laptop speakers: the mic can pick up the question being read out — drop that echo.
+    const echo = r.questions.some((q) => {
+      const m = window.PMRehearse.keywordMatch(q.question, text);
+      return m && m.total >= 3 && m.hit / m.total >= 0.6 && text.split(/\s+/).length <= q.question.split(/\s+/).length + 3;
+    });
+    if (echo) return;
+    const target = Date.now() < r.graceUntil && r.idx > 0 && !r.finishing ? r.idx - 1 : r.idx;
+    r.answers[target] = `${r.answers[target]} ${text}`.trim();
+    renderRehearsalAnswer();
+  }
+
+  function renderRehearsal() {
+    const r = rehearsal;
+    if (!r) return;
+    const q = r.questions[r.idx];
+    const last = r.idx === r.questions.length - 1;
+    rehearseBody.innerHTML = `
+      <div class="mt-rh-top">
+        <span class="mt-rh-step">Question ${r.idx + 1} of ${r.questions.length}</span>
+        <span class="mt-rh-dots">${r.questions.map((_, i) => `<i class="${i < r.idx ? 'done' : i === r.idx ? 'now' : ''}"></i>`).join('')}</span>
+        <span class="mt-rh-timer">0:00</span>
+      </div>
+      <div class="mt-rh-q">“${esc(q.question)}”</div>
+      ${q.why ? `<div class="mt-rh-why">Why it's hard: ${esc(q.why)}</div>` : ''}
+      <div class="mt-rh-live"><span class="mt-rh-label">Your answer</span><span class="mt-rh-answer">Listening — answer out loud…</span></div>
+      <div class="mt-rh-actions">
+        <button type="button" class="mt-btn mt-btn-ghost mt-rh-repeat">🔊 Repeat question</button>
+        <button type="button" class="mt-btn mt-btn-primary mt-rh-next">${last ? 'Finish & get feedback' : 'Next question →'}</button>
+      </div>`;
+    rehearseBody.querySelector('.mt-rh-repeat').addEventListener('click', () => window.PMRehearse.speak(q.question));
+    rehearseBody.querySelector('.mt-rh-next').addEventListener('click', nextRehearsalQuestion);
+    renderRehearsalAnswer();
+  }
+
+  function renderRehearsalAnswer() {
+    const r = rehearsal;
+    const el = rehearseBody.querySelector('.mt-rh-answer');
+    if (!r || !el) return;
+    const text = r.answers[r.idx];
+    el.textContent = text || 'Listening — answer out loud…';
+    el.classList.toggle('is-empty', !text);
+  }
+
+  function renderRehearsalTimer() {
+    const r = rehearsal;
+    const el = rehearseBody.querySelector('.mt-rh-timer');
+    if (!r || !el) return;
+    const secs = (Date.now() - r.qStartedAt) / 1000;
+    el.textContent = fmt(secs).replace(/^0/, '');
+    el.classList.toggle('long', secs >= REHEARSE_ANSWER_S);
+  }
+
+  function nextRehearsalQuestion() {
+    const r = rehearsal;
+    if (!r) return;
+    window.PMRehearse.stopSpeaking();
+    if (r.idx < r.questions.length - 1) {
+      r.idx += 1;
+      askCurrentQuestion();
+    } else {
+      finishRehearsal();
+    }
+  }
+
+  async function finishRehearsal() {
+    const r = rehearsal;
+    if (!r) return;
+    r.finishing = true;
+    clearInterval(r.timer);
+    rehearseBody.innerHTML = '<div class="mt-rh-wait">Catching your last words, then reviewing your answers…</div>';
+    try { await r.listener?.stop(); } catch (_) { /* ignore */ }
+    rehearsal = null;
+    rehearseBtn.textContent = 'Rehearse again';
+    const items = r.questions.map((q, i) => ({ question: q.question, answer: r.answers[i] }));
+    if (!items.some((it) => it.answer)) {
+      rehearseBody.innerHTML = '<div class="mt-rh-error">No answers were heard. Check the microphone (headphones help) and try again.</div>';
+      return;
+    }
+    let review = [];
+    try {
+      const resp = await fetch('/api/rehearsal/review', {
+        method: 'POST', headers: apiHeaders(true), body: JSON.stringify({ mode: fields.mode.value, items }),
+      });
+      if (resp.ok) review = (await resp.json()).review || [];
+    } catch (_) { /* show answers without a review */ }
+    renderRehearsalReview(items, review);
+  }
+
+  function renderRehearsalReview(items, review) {
+    const byQ = new Map(review.map((x) => [x.question, x]));
+    rehearseBody.innerHTML = `<div class="mt-rh-review">${items.map((it, i) => {
+      const rv = byQ.get(it.question) || {};
+      const stars = Number.isFinite(rv.rating) ? '★'.repeat(rv.rating) + '☆'.repeat(5 - rv.rating) : '';
+      return `
+        <div class="mt-rh-card">
+          <div class="mt-rh-card-head"><b>Q${i + 1}</b> ${stars ? `<span class="mt-rh-stars">${stars}</span>` : ''}</div>
+          <div class="mt-rh-q small">“${esc(it.question)}”</div>
+          <div class="mt-rh-cols">
+            <div><span class="mt-rh-label">You said</span><p>${esc(it.answer || '(no answer heard)')}</p></div>
+            ${rv.better_answer ? `<div class="is-better"><span class="mt-rh-label">Stronger answer
+              <button type="button" class="mt-rh-say" data-i="${i}" title="Read it aloud">🔊</button></span>
+              <p>${esc(rv.better_answer)}</p></div>` : ''}
+          </div>
+          ${rv.improve ? `<div class="mt-rh-fix"><b>Fix:</b> ${esc(rv.improve)}</div>` : ''}
+        </div>`;
+    }).join('')}</div>`;
+    rehearseBody.querySelectorAll('.mt-rh-say').forEach((btn) => btn.addEventListener('click', () => {
+      const rv = byQ.get(items[Number(btn.dataset.i)].question);
+      if (rv?.better_answer) window.PMRehearse.speak(rv.better_answer);
+    }));
+  }
+
+  function stopRehearsal(silent) {
+    const r = rehearsal;
+    rehearsal = null;
+    if (!r) return;
+    clearInterval(r.timer);
+    window.PMRehearse.stopSpeaking();
+    r.listener?.stop().catch(() => {});
+    rehearseBtn.textContent = 'Start rehearsal';
+    if (!silent) rehearseBody.innerHTML = '<div class="mt-rh-wait">Rehearsal stopped.</div>';
   }
 
   /* ── Capture ────────────────────────────────────── */
@@ -795,6 +1155,7 @@
     const now = Date.now();
     if (side === 'you') {
       youLevel = level;
+      if (level >= YOU_VOICE_RMS && !paused) { youVoicedS += VOICE_CHUNK_S; youVoiceTimes.push(now); }
       if (level >= YOU_VOICE_RMS) {
         if (now - lastYouVoice > 600) youTalkStart = now;
         // A new answer starts after the client had the floor, or after you paused for 4 s.
@@ -806,6 +1167,7 @@
       }
     } else {
       themLevel = level;
+      if (level >= THEM_VOICE_RMS && !paused) { themVoicedS += VOICE_CHUNK_S; themVoiceTimes.push(now); }
       if (level >= THEM_VOICE_RMS) {
         if (now - lastThemVoice > 600) themTalkStart = now;
         lastThemVoice = now;
@@ -864,6 +1226,7 @@
   async function startMeeting() {
     showError('');
     saveSettings();
+    if (rehearsal) stopRehearsal(true);
     startBtn.disabled = true;
 
     // The PiP window must be requested inside the click, before any other await.
@@ -975,6 +1338,7 @@
     if (!active || ending) return;
     ending = true;
     refreshStats();
+    sendTalkStats();
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([T_STOP]).buffer);
     stopCapture();
     endBtn.disabled = true;
@@ -1061,6 +1425,11 @@
   }
 
   otherBtn.addEventListener('click', chooseOtherAudio);
+  clientField?.addEventListener('input', scheduleLastCall);
+  clientField?.addEventListener('change', loadLastCall);
+  rehearseBtn?.addEventListener('click', startRehearsal);
+  loadClients();
+  if (clientField?.value) loadLastCall();
   startBtn.addEventListener('click', startMeeting);
   endBtn.addEventListener('click', endMeeting);
   reopenBtn.addEventListener('click', async () => {

@@ -179,3 +179,66 @@
 .mt-points-list li.done::before { content: "✓ "; font-weight: 800; }
 .mt-nudge.type-reminder { border-left-color: var(--warn); background: rgba(217, 119, 6, 0.05); }
 /* The floating coach (notch) lives in bubble.css. */
+
+/* ── Client + last-call memory (brief) ── */
+.mt-field input[type="text"] {
+  font: inherit; font-size: 14px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text);
+  background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+}
+.mt-last-call {
+  grid-column: 1 / -1; border: 1px solid rgba(2, 132, 199, 0.3); background: rgba(2, 132, 199, 0.05);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--text-2);
+}
+.mt-lc-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-weight: 700; color: var(--text); }
+.mt-lc-head a { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--teal); text-decoration: none; }
+.mt-lc-summary { margin: 6px 0 0; line-height: 1.5; }
+.mt-lc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 14px; margin-top: 8px; }
+.mt-lc-block b { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.mt-lc-block ul { margin: 4px 0 0; padding-left: 16px; }
+.mt-lc-block li { margin: 2px 0; }
+.mt-lc-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+/* ── Pre-call rehearsal ── */
+.mt-rehearse { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.mt-rehearse-head { display: flex; align-items: center; gap: 14px; justify-content: space-between; flex-wrap: wrap; }
+.mt-rehearse-head > div { font-size: 14px; color: var(--text); flex: 1 1 280px; }
+.mt-rehearse-tag { font-size: 11px; font-weight: 700; color: var(--coach); background: var(--coach-dim); border-radius: 20px; padding: 2px 8px; margin-left: 4px; }
+.mt-rehearse-sub { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+.mt-rehearse-head .mt-btn { padding: 9px 18px; font-size: 13px; }
+.mt-rehearse-body { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 14px 16px; }
+.mt-rh-wait, .mt-rh-error { font-size: 13.5px; color: var(--text-2); }
+.mt-rh-error { color: var(--danger); }
+.mt-rh-top { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.mt-rh-dots { display: inline-flex; gap: 5px; }
+.mt-rh-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border-hi); }
+.mt-rh-dots i.now { background: var(--coach); }
+.mt-rh-dots i.done { background: var(--ok); }
+.mt-rh-timer { margin-left: auto; font-family: var(--font-m); color: var(--text-2); }
+.mt-rh-timer.long { color: var(--warn); }
+.mt-rh-q { margin: 10px 0 4px; font-family: var(--font-d); font-size: 19px; font-weight: 700; line-height: 1.35; color: var(--text); }
+.mt-rh-q.small { font-size: 15px; margin-top: 4px; }
+.mt-rh-why { font-size: 12.5px; color: var(--muted); }
+.mt-rh-live { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; line-height: 1.5; min-height: 46px; }
+.mt-rh-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 3px; }
+.mt-rh-answer.is-empty { color: var(--muted); font-style: italic; }
+.mt-rh-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+.mt-rh-actions .mt-btn { padding: 9px 18px; font-size: 13px; }
+.mt-rh-review { display: flex; flex-direction: column; gap: 12px; }
+.mt-rh-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.mt-rh-card-head { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.mt-rh-stars { color: var(--warn); letter-spacing: 1px; }
+.mt-rh-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+.mt-rh-cols > div { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.5; }
+.mt-rh-cols > div.is-better { background: rgba(22, 163, 74, 0.07); }
+.mt-rh-cols p { margin: 0; }
+.mt-rh-say { border: 0; background: none; cursor: pointer; font-size: 13px; padding: 0 0 0 4px; }
+.mt-rh-fix { margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
+@media (max-width: 720px) { .mt-rh-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Commitments (live page) ── */
+.mt-commit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mt-commit-list li { font-size: 13px; color: var(--text-2); display: flex; gap: 8px; align-items: baseline; }
+.mt-commit-list li b { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+.mt-commit-list li.is-you b { color: var(--accent); }
+.mt-commit-list li.is-them b { color: var(--teal); }
+.mt-commit-list em { font-style: normal; color: var(--muted); }

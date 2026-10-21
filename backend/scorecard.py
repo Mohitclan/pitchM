@@ -35,6 +35,8 @@ _EVENT_SEVERITY = {
     "contradiction": 4.0,
     "slide_clarity": 2.0,
     "slide_mismatch": 3.0,
+    "monologue": 1.0,
+    "talk_share": 1.0,
 }
 
 
@@ -86,6 +88,7 @@ def build_scorecard(state: "SessionState") -> dict:
             "research_tips": state.research_tips,
             "generated_assets": state.generated_assets,
             "prosody": state.prosody_metrics,
+            **_session_extras(state),
         }
 
     # Use holistic AI scores from the synthesis agent when available;
@@ -204,6 +207,24 @@ def build_scorecard(state: "SessionState") -> dict:
         "client_moods": getattr(state, "client_moods", []),
         "interruptions": getattr(state, "interruptions", 0),
         "transcription_health": getattr(state, "transcription_health", {}),
+        **_session_extras(state),
+    }
+
+
+def _session_extras(state) -> dict:
+    """Meeting/practice extras saved with every session (both scored and unscored)."""
+    return {
+        "client": getattr(state, "client_name", ""),
+        "previous_call": getattr(state, "previous_call", {}),
+        "commitments": getattr(state, "commitments", []),
+        "talk_stats": getattr(state, "talk_stats", {}),
+        "rewrites": getattr(state, "rewrites", []),
+        "brief": {
+            "notes": getattr(state, "brief_notes", ""),
+            "points": getattr(state, "brief_points", []),
+            "planned_minutes": getattr(state, "planned_minutes", 0),
+        },
+        "recap": getattr(state, "recap", {}),
     }
 
 

@@ -237,8 +237,28 @@ Output ONLY a valid JSON object, no markdown fences:
   "follow_up_email": {"subject": "<short subject>", "body": "<ready-to-send email from the presenter to the other party: thank them, recap key points and decisions, list next steps with owners/dates, close warmly; plain text, 120-220 words; use [Name] where a name wasn't said>"}
 }
 Rules: only include what was actually said — never invent numbers, names, dates or commitments.
+If COMMITMENTS NOTED LIVE are listed, include each one in action_items (unless the transcript shows it
+was withdrawn) and name the presenter's own promises in the follow-up email's next steps.
 Use empty arrays when nothing applies. Write in the language the presenter mostly used.""",
     output_key="recap_json",
+)
+
+REWRITE_AGENT = LlmAgent(
+    name="rewrite_agent",
+    model=ANALYSIS_MODEL,
+    instruction="""You coach a presenter after a practice run. You get the presenter's lines from a live
+transcript, each with a [seconds] timestamp (speech recognition may contain small errors — judge the substance).
+
+Pick the 2 or 3 WEAKEST passages: rambling, vague, hedging, buried point, filler-heavy or badly structured.
+For each, write a stronger version the presenter can read aloud and practise.
+
+Output ONLY a valid JSON array, no markdown fences:
+[{"ts": <seconds of the passage>, "original": "<the passage as said, trimmed to its core, max 60 words>",
+  "rewrite": "<stronger version, first person, spoken style, 2-4 short sentences, same facts; never invent
+  numbers or names — use [placeholders] for missing specifics>",
+  "why": "<what makes the rewrite stronger, max 15 words>"}]
+Return [] if there are fewer than 40 words of presenter speech.""",
+    output_key="rewrites_json",
 )
 
 # ── ADK pipeline declarations ──────────────────────────────────────────────

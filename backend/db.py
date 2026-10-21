@@ -73,6 +73,11 @@ class LocalStore:
                 created_at INTEGER,
                 payload    TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS goals (
+                user_id    TEXT PRIMARY KEY,
+                updated_at INTEGER,
+                payload    TEXT NOT NULL
+            );
             """
         )
         self._conn.commit()
@@ -129,6 +134,17 @@ class LocalStore:
         rows = self._run("SELECT payload FROM user_profiles WHERE user_id = ?", (user_id,))
         return json.loads(rows[0][0]) if rows else None
 
+    def save_goals(self, user_id: str, payload: dict) -> None:
+        self._run(
+            "INSERT OR REPLACE INTO goals (user_id, updated_at, payload) VALUES (?, ?, ?)",
+            (user_id, int(payload.get("updated_at") or 0), json.dumps(payload, default=str)),
+            write=True,
+        )
+
+    def get_goals(self, user_id: str) -> Optional[dict]:
+        rows = self._run("SELECT payload FROM goals WHERE user_id = ?", (user_id,))
+        return json.loads(rows[0][0]) if rows else None
+
 
 class FirestoreClient:
     def __init__(self):
@@ -139,6 +155,7 @@ class FirestoreClient:
         self._recent_ids: deque[str] = deque()
         self._user_profiles: dict[str, dict] = {}
         self._feedback: dict[str, dict] = {}
+        self._goals: dict[str, dict] = {}
         self._local: Optional[LocalStore] = None
         self._init()
 
@@ -351,6 +368,28 @@ class FirestoreClient:
                 logger.error("Failed to list feedback locally: %s", e)
         rows = sorted(self._feedback.values(), key=lambda r: r.get("created_at", 0), reverse=True)
         return [deepcopy(r) for r in rows[:limit]]
+
+    async def save_goals(self, user_id: str, goals: list[dict]) -> bool:
+        """Practice goals for one user (local SQLite or memory; not mirrored to Firestore)."""
+        payload = {"user_id": user_id, "goals": goals, "updated_at": int(time.time())}
+        self._goals[user_id] = deepcopy(payload)
+        if self._local is not None:
+            try:
+                await asyncio.to_thread(self._local.save_goals, user_id, payload)
+                return True
+            except Exception as e:
+                logger.error("Failed to save goals for %s: %s", user_id, e)
+        return False
+
+    async def get_goals(self, user_id: str) -> list[dict]:
+        if self._local is not None:
+            try:
+                payload = await asyncio.to_thread(self._local.get_goals, user_id)
+                if payload:
+                    return list(payload.get("goals") or [])
+            except Exception as e:
+                logger.error("Failed to read goals for %s: %s", user_id, e)
+        return list((self._goals.get(user_id) or {}).get("goals") or [])
 
     async def list_recent(self, limit: int = 20, user_id: Optional[str] = None) -> list[dict]:
         limit = max(1, min(limit, 100))

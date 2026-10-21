@@ -2011,3 +2011,103 @@ main {
 .rc-mood.mood-confused, .rc-mood.mood-skeptical { color: #b45309; background: rgba(217, 119, 6, 0.1); }
 .rc-mood.mood-disengaged { color: var(--danger); background: var(--danger-dim); }
 .rc-arrow { color: var(--text-muted); font-size: 11px; }
+
+/* ── Side-by-side "stronger version" + retry (Q&A review, Say it better) ── */
+.cmp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.cmp-col { border-radius: var(--radius-xs); padding: 8px 10px; background: var(--surface-2); }
+.cmp-col.is-better { background: var(--accent-dim); }
+.cmp-col p { margin: 4px 0 0; font-size: 13px; color: var(--text); line-height: 1.55; }
+.cmp-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cmp-actions .asset-download { cursor: pointer; }
+.retry-box { border: 1px dashed var(--border-hi); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12.5px; }
+.retry-live { color: var(--text-secondary); }
+.retry-said { margin: 6px 0 0; font-size: 13px; color: var(--text); line-height: 1.55; }
+.retry-said:empty { display: none; }
+.retry-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.retry-chips span { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; }
+.retry-missing { margin-top: 6px; color: var(--warn); }
+.retry-good { margin-top: 6px; color: var(--success); font-weight: 700; }
+.rw-why { font-size: 12px; color: var(--text-secondary); }
+.rw-jump { text-decoration: none; }
+.rw-jump:hover { text-decoration: underline; }
+.rewrite-section .qa-card { border-left-color: var(--success); }
+.rewrite-section .qa-num { color: var(--success); }
+@media (max-width: 720px) { .cmp { grid-template-columns: minmax(0, 1fr); } }
+
+/* Replay: markers are clickable, the transcript line flashes */
+.timeline-marker { cursor: pointer; }
+.timeline-marker::after { content: ""; position: absolute; inset: -6px; }
+.timeline-marker.type-commitment { background: #16a34a; }
+.timeline-marker.type-client_mood { background: #0284c7; }
+.sc-transcript-line.flash { animation: rv-flash 1.4s ease; border-radius: var(--radius-xs); }
+
+/* Recap: commitments, talk time, previous call, export */
+.rc-commits { list-style: none; padding-left: 0 !important; }
+.rc-commits li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.rc-commits em { font-style: normal; color: var(--text-muted); }
+.rc-owner { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; border-radius: 999px; padding: 1px 7px; }
+.rc-owner.is-you { color: var(--accent); background: var(--accent-dim); }
+.rc-owner.is-them { color: var(--teal); background: var(--teal-dim); }
+.rc-talk { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--text); }
+.rc-talk-bar { flex: 0 0 120px; height: 8px; border-radius: 999px; background: var(--teal-dim); overflow: hidden; }
+.rc-talk-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.rc-talk-sub { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.rc-prev { margin: 0 0 10px; font-size: 12.5px; color: var(--text-secondary); }
+.rc-prev a { color: var(--accent); }
+.rc-export { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 14px; }
+.rc-export .asset-download { cursor: pointer; }
+
+/* ── Progress over time + practice goals (History) ── */
+.history-progress { margin-bottom: 14px; }
+.history-progress.is-loading { opacity: 0.55; }
+.progress-section { display: flex; flex-direction: column; gap: 10px; }
+.trend-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.trend-chip { font: inherit; font-size: 12px; font-weight: 700; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border-hi); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.trend-chip.is-on { color: var(--surface); background: var(--text); border-color: var(--text); }
+.trend-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.trend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.trend-card { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 10px 12px 6px; }
+.tc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tc-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.tc-last { font-size: 18px; font-weight: 700; color: var(--text); }
+.tc-empty { font-size: 12.5px; color: var(--text-muted); padding: 18px 0 14px; }
+.tc-plot { position: relative; cursor: pointer; outline: none; }
+.tc-plot:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); border-radius: var(--radius-xs); }
+.tc-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tc-grid { stroke: var(--border); stroke-width: 1; }
+.tc-tick, .tc-axis { font-size: 9px; fill: var(--text-muted); font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
+.tc-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tc-area { fill: var(--accent); opacity: 0.1; }
+.tc-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.tc-dot.is-hover { r: 5.5; }
+.tc-end { font-size: 10px; font-weight: 700; fill: var(--text); font-family: var(--font-ui); }
+.tc-goal { stroke: var(--success); stroke-width: 1.5; }
+.tc-goal-label { font-size: 9px; font-weight: 700; fill: var(--text-secondary); font-family: var(--font-ui); }
+.tc-cross { stroke: var(--text-muted); stroke-width: 1; }
+.tc-cross.hidden { display: none; }
+.tc-tip { position: absolute; transform: translateX(-50%); pointer-events: none; background: var(--text); color: #fff; border-radius: var(--radius-xs); padding: 4px 8px; font-size: 11px; white-space: nowrap; display: flex; gap: 6px; align-items: baseline; box-shadow: var(--shadow-sm); }
+.tc-tip b { font-size: 13px; }
+.tc-tip span { opacity: 0.75; }
+.trend-table summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+.trend-table table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trend-table th, .trend-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.trend-table th { font-size: 10px; color: var(--text-muted); }
+.goals-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.goal-row { display: flex; flex-direction: column; gap: 4px; }
+.goal-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.goal-state { font-size: 11.5px; font-weight: 700; color: var(--success); }
+.goal-remove { margin-left: auto; border: 0; background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; line-height: 1; }
+.goal-bar { height: 8px; border-radius: 999px; background: var(--accent-dim); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.goal-bar i.is-met { background: var(--success); }
+.goal-sub { font-size: 12px; color: var(--text-secondary); }
+.goal-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.goal-form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.goal-form select, .goal-form input { font: inherit; font-size: 12.5px; border: 1px solid var(--border-hi); border-radius: var(--radius-xs); padding: 4px 8px; background: var(--surface); color: var(--text); }
+.goal-form input { width: 90px; }
+.goal-form .asset-download { cursor: pointer; }
+.goal-checks { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0 14px; }
+.goal-check { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; }
+.goal-check.is-met { color: var(--success); background: rgba(22, 163, 74, 0.08); }
+.goal-check.is-miss { color: var(--warn); background: rgba(217, 119, 6, 0.08); }
+.goal-state.is-behind { color: var(--text-muted); }

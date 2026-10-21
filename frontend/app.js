@@ -1301,6 +1301,8 @@ const ISSUE_LABELS = {
   monotone:       'Flat tone',
   confidence:     'Hedging',
   interruption:   'Interrupted',
+  monologue:      'Long monologue',
+  talk_share:     'Talk time',
 };
 const ISSUE_TIPS = {
   filler:         'Replace the filler with a silent pause — breathe, then continue.',
@@ -1315,6 +1317,8 @@ const ISSUE_TIPS = {
   monotone:       'Lift your energy: stress key words and vary your pitch.',
   confidence:     'Replace “I think / maybe” with a direct statement.',
   interruption:   'Let them finish their sentence, pause one beat, then answer.',
+  monologue:      'After about a minute, stop and ask a question to bring them in.',
+  talk_share:     'Aim for a 50/50 conversation: ask open questions and listen.',
 };
 
 function evidenceSummary(ev) {
@@ -1949,6 +1953,20 @@ function _reviewPlainText(data) {
     points.forEach((p) => out.push(`  ${p.covered ? '[x]' : '[ ]'} ${p.text}`));
   }
 
+  const commits = Array.isArray(data.commitments) ? data.commitments : [];
+  if (commits.length) {
+    out.push('', `== COMMITMENTS (${commits.length}) ==`);
+    commits.forEach((c) => out.push(`  [${formatTime(Number(c.ts) || 0)}] ${c.owner === 'you' ? 'You' : 'Them'}: ${c.task}${c.due ? ` (${c.due})` : ''}`));
+  }
+  const rewrites = Array.isArray(data.rewrites) ? data.rewrites : [];
+  if (rewrites.length) {
+    out.push('', `== SAY IT BETTER (${rewrites.length}) ==`);
+    rewrites.forEach((w) => {
+      out.push(`[${formatTime(Number(w.ts) || 0)}] You said: ${w.original}`, `    Stronger: ${w.rewrite}`);
+      if (w.why) out.push(`    Why: ${w.why}`);
+    });
+  }
+
   const qa = Array.isArray(data.qa_review) ? data.qa_review : [];
   if (qa.length) {
     out.push('', `== QUESTION-BY-QUESTION REVIEW (${qa.length}) ==`);
@@ -1988,9 +2006,35 @@ const downloadTranscript = downloadSessionReview;
 function renderRecap(data) {
   const r = data.recap || {};
   const points = data.brief?.points || [];
-  const hasRecap = r.summary || (r.action_items || []).length || r.follow_up_email?.body;
+  const commitments = Array.isArray(data.commitments) ? data.commitments : [];
+  const hasRecap = r.summary || (r.action_items || []).length || r.follow_up_email?.body || commitments.length;
   const moods = (data.client_moods || []).filter((m, i, arr) => i === 0 || m.mood !== arr[i - 1].mood);
   if (!hasRecap && !points.length && !moods.length) return '';
+  const commitHtml = commitments.length
+    ? `<div class="rc-block"><div class="rc-title">Commitments made <span class="report-badge">${commitments.length}</span></div>
+        <ul class="rc-commits">${commitments.map((c) => `<li><span class="rc-owner is-${c.owner === 'you' ? 'you' : 'them'}">${c.owner === 'you' ? 'You' : 'Them'}</span>
+          ${escapeHtml(c.task)}${c.due ? ` <em>· ${escapeHtml(c.due)}</em>` : ''} <span class="sc-event-time">${formatTime(Number(c.ts) || 0)}</span></li>`).join('')}</ul></div>`
+    : '';
+  const talk = data.talk_stats || {};
+  const talkHtml = talk.you_share != null
+    ? `<div class="rc-block"><div class="rc-title">Talk time</div>
+        <div class="rc-talk"><span class="rc-talk-bar"><i style="width:${Math.round(talk.you_share * 100)}%"></i></span>
+        You ${Math.round(talk.you_share * 100)}% · Them ${100 - Math.round(talk.you_share * 100)}%</div>
+        ${talk.longest_monologue_s ? `<div class="rc-talk-sub">Longest stretch without a pause for them: ${formatTime(talk.longest_monologue_s)}</div>` : ''}</div>`
+    : '';
+  const prev = data.previous_call || {};
+  const prevHtml = prev.session_id
+    ? `<div class="rc-prev">↺ Follow-up to your ${escapeHtml(_sessionDate(prev).toLocaleDateString())} call${data.client ? ` with ${escapeHtml(data.client)}` : ''} ·
+        <a href="#" onclick="openPastSession('${escapeHtml(prev.session_id)}'); return false;">open that review</a></div>`
+    : '';
+  const exportHtml = hasRecap
+    ? `<div class="rc-export"><span class="rc-title">Export</span>
+        <button type="button" class="asset-download" onclick="copyRecapMarkdown()">Copy for Notion / docs</button>
+        <button type="button" class="asset-download" onclick="downloadRecapMarkdown()">Download .md</button>
+        ${window._pmConfig?.export_webhook ? `<button type="button" class="asset-download" onclick="sendRecapToWebhook()">Send to ${escapeHtml(window._pmConfig.export_label || 'CRM')}</button>` : ''}
+        ${r.follow_up_email?.body ? '<button type="button" class="asset-download" onclick="openRecapEmail()">Email follow-up</button>' : ''}
+        <span id="rc-export-status" class="rc-email-status" aria-live="polite"></span></div>`
+    : '';
   const moodHtml = moods.length
     ? `<div class="rc-block"><div class="rc-title">Client mood during the call</div>
         <div class="rc-moods">${moods.map((m) => `<span class="rc-mood mood-${escapeHtml(m.mood)}" title="${escapeHtml(m.reason || '')}">
@@ -2023,10 +2067,14 @@ function renderRecap(data) {
     : '';
   return `
     <div class="recap-section">
-      <div class="sc-events-title">Meeting recap</div>
+      <div class="sc-events-title">Meeting recap${data.client ? ` <span class="report-badge">${escapeHtml(data.client)}</span>` : ''}</div>
+      ${prevHtml}
       ${r.summary ? `<p class="rc-summary">${escapeHtml(r.summary)}</p>` : ''}
+      ${exportHtml}
       <div class="rc-grid">
         ${coverage}
+        ${commitHtml}
+        ${talkHtml}
         ${moodHtml}
         ${block('Decisions', r.decisions)}
         ${actions}
@@ -2052,6 +2100,82 @@ async function copyRecapEmail() {
     if (status) status.textContent = 'Copy failed — select the text and copy it manually.';
   }
 }
+
+/** The recap as Markdown — pastes cleanly into Notion, Google Docs, Slack or a CRM note. */
+function _recapMarkdown(data) {
+  const r = data.recap || {};
+  const when = _sessionDate(data).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const out = [`# Meeting recap${data.client ? ` — ${data.client}` : ''} (${when})`, ''];
+  out.push(`*${(data.coach_mode || 'meeting').replace(/_/g, ' ')} · ${formatTime(Number(data.duration_seconds) || 0)}*`, '');
+  if (r.summary) out.push('## Summary', r.summary, '');
+  const list = (title, items) => { if (items && items.length) out.push(`## ${title}`, ...items.map((x) => `- ${x}`), ''); };
+  list('Decisions', r.decisions);
+  if ((r.action_items || []).length) {
+    out.push('## Action items', ...r.action_items.map((a) => `- [ ] **${a.owner || '—'}**: ${a.task}${a.due ? ` (due ${a.due})` : ''}`), '');
+  }
+  const commits = data.commitments || [];
+  if (commits.length) {
+    out.push('## Commitments made', ...commits.map((c) => `- **${c.owner === 'you' ? 'You' : 'Them'}**: ${c.task}${c.due ? ` (${c.due})` : ''}`), '');
+  }
+  list('Open questions', r.open_questions);
+  list('Client signals', r.client_signals);
+  const points = data.brief?.points || [];
+  if (points.length) out.push('## Pre-call points', ...points.map((p) => `- [${p.covered ? 'x' : ' '}] ${p.text}`), '');
+  if (r.follow_up_email?.body) {
+    out.push('## Follow-up email', `**Subject:** ${r.follow_up_email.subject || ''}`, '', ...r.follow_up_email.body.split('\n').map((l) => `> ${l}`), '');
+  }
+  return out.join('\n');
+}
+
+function _exportStatus(text) {
+  const el = document.getElementById('rc-export-status');
+  if (el) el.textContent = text;
+}
+
+async function copyRecapMarkdown() {
+  const data = window._lastScorecardData;
+  if (!data) return;
+  try {
+    await navigator.clipboard.writeText(_recapMarkdown(data));
+    _exportStatus('Copied — paste into Notion or a doc ✓');
+  } catch (_) {
+    _exportStatus('Copy failed — use Download .md instead.');
+  }
+}
+
+function downloadRecapMarkdown() {
+  const data = window._lastScorecardData;
+  if (!data) return;
+  const blob = new Blob([_recapMarkdown(data)], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const slug = String(data.client || 'meeting').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meeting';
+  a.href = url;
+  a.download = `recap-${slug}-${_sessionDate(data).toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function sendRecapToWebhook() {
+  const data = window._lastScorecardData;
+  if (!data?.session_id) return;
+  _exportStatus('Sending…');
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(data.session_id)}/export`, { method: 'POST', headers: authHeaders() });
+    const body = await resp.json().catch(() => ({}));
+    _exportStatus(resp.ok ? `Sent to ${window._pmConfig?.export_label || 'CRM'} ✓` : (body.detail || 'Send failed.'));
+  } catch (_) {
+    _exportStatus('Send failed — check the connection.');
+  }
+}
+
+// Server feature flags (export webhook label, …) for the review page.
+fetch('/api/config', { headers: authHeaders() })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((cfg) => { if (cfg) window._pmConfig = cfg; })
+  .catch(() => {});
 
 function openRecapEmail() {
   const { subject, body } = _recapEmailText();
@@ -2155,12 +2279,11 @@ function renderQaReview(data) {
           ${stars ? `<span class="qa-stars">${stars}<span class="qa-rating">${q.rating}/5</span></span>` : ''}
         </div>
         <div class="qa-question">“${escapeHtml(q.question)}”</div>
-        <div class="qa-row"><span class="qa-label">Your answer</span><span class="qa-answer">${escapeHtml(q.answer)}</span></div>
         ${q.verdict ? `<div class="qa-row"><span class="qa-label">Verdict</span><span>${escapeHtml(q.verdict)}</span></div>` : ''}
         ${q.worked ? `<div class="qa-row"><span class="qa-label">What worked</span><span>${escapeHtml(q.worked)}</span></div>` : ''}
         ${q.improve ? `<div class="qa-row"><span class="qa-label">Fix this</span><span>${escapeHtml(q.improve)}</span></div>` : ''}
         ${hint}
-        ${q.better_answer ? `<div class="qa-better"><span class="qa-label">Stronger answer</span><p>${escapeHtml(q.better_answer)}</p></div>` : ''}
+        ${renderCompare('qa', i, q.answer, q.better_answer)}
       </div>`;
   }).join('');
   return `
@@ -2168,6 +2291,143 @@ function renderQaReview(data) {
       <div class="sc-events-title">Question-by-question review <span class="report-badge">${items.length} question${items.length === 1 ? '' : 's'}</span></div>
       <div class="qa-list">${cards}</div>
     </div>`;
+}
+
+/** "You said" next to the stronger version, with read-aloud and an instant retry. */
+function renderCompare(kind, i, said, better) {
+  if (!better) {
+    return `<div class="qa-row"><span class="qa-label">Your answer</span><span class="qa-answer">${escapeHtml(said || '')}</span></div>`;
+  }
+  return `
+    <div class="cmp">
+      <div class="cmp-col"><span class="qa-label">${kind === 'qa' ? 'Your answer' : 'You said'}</span><p>${escapeHtml(said || '')}</p></div>
+      <div class="cmp-col is-better"><span class="qa-label">Stronger version</span><p>${escapeHtml(better)}</p></div>
+    </div>
+    <div class="cmp-actions">
+      <button type="button" class="asset-download" onclick="readStronger('${kind}', ${i})">🔊 Read it aloud</button>
+      <button type="button" class="asset-download" id="retry-btn-${kind}-${i}" onclick="toggleRetry('${kind}', ${i})">🎙 Retry it</button>
+    </div>
+    <div class="retry-box hidden" id="retry-${kind}-${i}" aria-live="polite"></div>`;
+}
+
+/** Practice: the weakest passages rewritten stronger. */
+function renderRewrites(data) {
+  const items = Array.isArray(data.rewrites) ? data.rewrites : [];
+  if (!items.length) return '';
+  return `
+    <div class="qa-section rewrite-section">
+      <div class="sc-events-title">Say it better <span class="report-badge">${items.length} passage${items.length === 1 ? '' : 's'}</span></div>
+      <div class="qa-list">${items.map((w, i) => `
+        <div class="qa-card">
+          <div class="qa-head">
+            <span class="qa-num">#${i + 1}</span>
+            <a href="#" class="sc-event-time rw-jump" onclick="jumpToTime(${Number(w.ts) || 0}); return false;" title="Show this moment in the transcript">${formatTime(Number(w.ts) || 0)}</a>
+            ${w.why ? `<span class="rw-why">${escapeHtml(w.why)}</span>` : ''}
+          </div>
+          ${renderCompare('rw', i, w.original, w.rewrite)}
+        </div>`).join('')}</div>
+    </div>`;
+}
+
+function _compareTarget(kind, i) {
+  const data = window._lastScorecardData || {};
+  if (kind === 'qa') {
+    const q = (data.qa_review || [])[i] || {};
+    return { question: q.question || '', better: q.better_answer || '' };
+  }
+  const w = (data.rewrites || [])[i] || {};
+  return { question: '', better: w.rewrite || '' };
+}
+
+function readStronger(kind, i) {
+  const { better } = _compareTarget(kind, i);
+  if (better) window.PMRehearse?.speak(better);
+}
+
+let _retry = null;   // { kind, i, listener, said, startedAt }
+
+async function toggleRetry(kind, i) {
+  const box = document.getElementById(`retry-${kind}-${i}`);
+  const btn = document.getElementById(`retry-btn-${kind}-${i}`);
+  if (!box || !window.PMRehearse) return;
+  if (_retry) {
+    const same = _retry.kind === kind && _retry.i === i;
+    await finishRetry();
+    if (same) return;
+  }
+  if (sessionActive) return;
+  window.PMRehearse.stopSpeaking();
+  box.classList.remove('hidden');
+  box.innerHTML = '<span class="retry-live">Connecting the mic…</span>';
+  const r = { kind, i, said: '', startedAt: Date.now(), listener: null, box, btn };
+  _retry = r;
+  try {
+    r.listener = await window.PMRehearse.listen({
+      userId: CLIENT_USER_ID,
+      onText: (t) => {
+        r.said = `${r.said} ${t}`.trim();
+        const live = box.querySelector('.retry-said');
+        if (live) live.textContent = r.said;
+      },
+    });
+  } catch (err) {
+    _retry = null;
+    box.innerHTML = '<span class="retry-live">Microphone blocked — allow it in the address bar and try again.</span>';
+    return;
+  }
+  if (_retry !== r) { r.listener.stop(); return; }
+  r.startedAt = Date.now();
+  if (btn) btn.textContent = '■ Stop';
+  box.innerHTML = `<span class="retry-live">● Listening — say the stronger version in your own words, then press Stop.</span>
+    <p class="retry-said"></p>`;
+}
+
+async function finishRetry() {
+  const r = _retry;
+  if (!r) return;
+  _retry = null;
+  const seconds = (Date.now() - r.startedAt) / 1000;
+  if (r.btn) r.btn.textContent = '🎙 Retry it';
+  r.box.innerHTML = '<span class="retry-live">Catching your last words…</span>';
+  try { await r.listener?.stop(); } catch (_) { /* ignore */ }
+  const { better } = _compareTarget(r.kind, r.i);
+  const stats = window.PMRehearse.speechStats(r.said, seconds);
+  const match = window.PMRehearse.keywordMatch(better, r.said);
+  if (!r.said) {
+    r.box.innerHTML = '<span class="retry-live">Nothing was heard — check the microphone and try again.</span>';
+    return;
+  }
+  const chips = [
+    `${stats.words} words`,
+    stats.wpm ? `${stats.wpm} wpm` : '',
+    `${stats.fillers} filler${stats.fillers === 1 ? '' : 's'}`,
+    match ? `${match.hit}/${match.total} key words` : '',
+  ].filter(Boolean);
+  r.box.innerHTML = `
+    <div class="retry-result">
+      <div class="retry-chips">${chips.map((c) => `<span>${escapeHtml(c)}</span>`).join('')}</div>
+      <p class="retry-said">${escapeHtml(r.said)}</p>
+      ${match && match.missing.length ? `<div class="retry-missing">Not used yet: ${match.missing.map(escapeHtml).join(', ')}</div>` : ''}
+      ${stats.fillers === 0 && match && match.hit / match.total >= 0.6 ? '<div class="retry-good">Clean and on point ✓</div>' : ''}
+    </div>`;
+}
+
+/** Scroll the review transcript to the line spoken at `ts` seconds and flash it. */
+function jumpToTime(ts) {
+  const col = document.getElementById('rv-transcript-body');
+  if (!col) return;
+  const lines = [...col.querySelectorAll('[data-ts]')];
+  if (!lines.length) return;
+  let target = lines[0];
+  for (const el of lines) {
+    if (Number(el.dataset.ts) <= ts + 0.5) target = el;
+    else break;
+  }
+  col.scrollTo({ top: target.offsetTop - col.offsetTop - 24, behavior: 'smooth' });
+  col.closest('.review-split')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  target.classList.remove('flash');
+  void target.offsetWidth;
+  target.classList.add('flash');
 }
 
 /** Scroll the review transcript to coaching moment `i` and flash it. */
@@ -2193,7 +2453,7 @@ function renderReviewSection(data, reportBodyHtml, modeLabel) {
     .sort((x, y) => (x.ts - y.ts) || (x.kind === 'line' ? -1 : 1));
   const transcriptHtml = rows.length || moments.length
     ? items.map((it) => (it.kind === 'line'
-      ? `<div class="sc-transcript-line ${it.r.speaker === 'Coach' ? 'is-coach' : it.r.speaker === 'Them' ? 'is-them' : 'is-user'}">
+      ? `<div class="sc-transcript-line ${it.r.speaker === 'Coach' ? 'is-coach' : it.r.speaker === 'Them' ? 'is-them' : 'is-user'}" data-ts="${it.r.ts}">
            <span class="sc-event-time">${formatTime(it.r.ts)}</span>
            <span class="sc-transcript-speaker">${it.r.speaker}</span>
            <span class="sc-transcript-text">${escapeHtml(it.r.text)}</span>
@@ -2334,10 +2594,12 @@ function renderScorecard(data) {
       ${scoreMetaHtml}
     </div>
     ${insufficientHtml}
+    ${renderGoalCheck(data)}
     ${renderRecap(data)}
     <div class="scorecard-categories">${catHtml}</div>
     ${reviewHtml}
     ${renderQaReview(data)}
+    ${renderRewrites(data)}
     ${timelineHtml}
     ${assetsHtml}
     ${citationHtml}
@@ -2402,7 +2664,8 @@ function renderReplayTimeline(data) {
 
   const markerHtml = markers.map((m, i) => {
     const left = ((m.ts / duration) * 100).toFixed(2);
-    return `<span class="timeline-marker type-${escapeHtml(m.type)}" data-marker-index="${i}" style="left:${left}%"></span>`;
+    return `<span class="timeline-marker type-${escapeHtml(m.type)}" data-marker-index="${i}" style="left:${left}%"
+      role="button" tabindex="0" title="${escapeHtml(formatTime(m.ts))} · ${escapeHtml(m.label)} — click to see it in the transcript"></span>`;
   }).join('');
 
   return `
@@ -2413,7 +2676,7 @@ function renderReplayTimeline(data) {
         <span id="timeline-time" class="timeline-time">0:00</span>
       </div>
       <div id="timeline-track" class="timeline-track">${markerHtml}</div>
-      <div id="timeline-detail" class="timeline-detail">Move the scrubber to inspect interruptions, signal spikes, and slide changes.</div>
+      <div id="timeline-detail" class="timeline-detail">Click a marker (or move the scrubber) to jump to that moment in the transcript.</div>
     </div>
   `;
 }
@@ -2423,7 +2686,19 @@ function bindReplayTimeline() {
   if (!scrubber || !_replayTimeline.markers.length) return;
   const onUpdate = () => updateReplayTimeline(Number(scrubber.value || 0));
   scrubber.addEventListener('input', onUpdate);
-  scrubber.addEventListener('change', onUpdate);
+  scrubber.addEventListener('change', () => { onUpdate(); jumpToTime(Number(scrubber.value || 0)); });
+  const track = document.getElementById('timeline-track');
+  const pick = (e) => {
+    const el = e.target.closest('.timeline-marker');
+    if (!el) return;
+    const m = _replayTimeline.markers[Number(el.dataset.markerIndex)];
+    if (!m) return;
+    scrubber.value = String(Math.round(m.ts));
+    updateReplayTimeline(m.ts);
+    jumpToTime(m.ts);
+  };
+  track?.addEventListener('click', pick);
+  track?.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(e); });
   updateReplayTimeline(0);
 }
 
@@ -2517,6 +2792,7 @@ async function showHistory() {
   if (sessionActive || _waitingForScorecard) return;
   _historyReturnTo = scorecardPanel.classList.contains('hidden') ? 'live' : 'scorecard';
   _setRightView('history');
+  loadProgress();
   if (!historyList) return;
   historyList.innerHTML = '<div class="recent-empty">Loading past sessions…</div>';
   try {
@@ -2585,6 +2861,314 @@ async function openPastSession(sessionId) {
   }
 }
 
+/* ── Progress over time + practice goals ─────────── */
+// Per-session numbers come from /api/sessions/trends (oldest first); goals from /api/goals.
+const TREND_CHARTS = [
+  { key: 'fillers_per_min', title: 'Fillers per minute', fmt: (v) => v.toFixed(1), lowerBetter: true },
+  { key: 'wpm', title: 'Speaking pace (wpm)', fmt: (v) => String(Math.round(v)), lowerBetter: null },
+  { key: 'eye_drops_per_min', title: 'Look-aways per minute', fmt: (v) => v.toFixed(1), lowerBetter: true },
+  { key: 'score', title: 'Session score', fmt: (v) => String(Math.round(v)), lowerBetter: false },
+];
+const GOAL_PRESETS = [
+  { metric: 'fillers_per_min', target: 3, label: 'Under 3 fillers a minute' },
+  { metric: 'sessions_per_week', target: 3, label: '3 practice sessions a week' },
+  { metric: 'score', target: 75, label: 'Score 75 or more' },
+  { metric: 'wpm', target: 170, label: 'Pace under 170 wpm' },
+];
+let _trendPoints = [];
+let _trendKind = 'practice';
+window._pmGoals = [];
+let _goalMeta = {};
+
+function _goalText(g) {
+  const m = _goalMeta[g.metric] || {};
+  const n = Number.isInteger(g.target) ? g.target : Number(g.target).toFixed(1);
+  if (g.metric === 'sessions_per_week') return `${n} practice sessions a week`;
+  if (g.metric === 'score') return `Score ${n} or more`;
+  if (g.metric === 'wpm') return `Pace under ${n} wpm`;
+  return `${m.label || g.metric} ${m.direction === 'min' ? '≥' : '≤'} ${n}`;
+}
+
+/** Same numbers as the server's session_trend_point, for the session on screen. */
+function _sessionTrendPoint(data) {
+  const cats = data.categories || {};
+  const duration = Number(data.duration_seconds) || 0;
+  const words = (data.transcript || []).filter((s) => s && s.s === 'u')
+    .reduce((n, s) => n + String(s.t || '').split(/\s+/).filter(Boolean).length, 0);
+  const speaking = data.session_kind === 'meeting' ? Number((data.talk_stats || {}).you_s) || 0 : 0;
+  const minutes = (speaking >= 20 ? speaking : duration) / 60;
+  const ok = minutes >= 0.25 && !data.insufficient_speech;
+  const fillers = cats.filler_words?.count;
+  const drops = cats.eye_contact?.drops;
+  return {
+    score: ok ? Number(data.overall_score) : null,
+    fillers_per_min: ok && Number.isFinite(fillers) ? fillers / minutes : null,
+    wpm: ok && words ? words / minutes : null,
+    eye_drops_per_min: ok && Number.isFinite(drops) && duration ? drops / (duration / 60) : null,
+  };
+}
+
+function _goalMet(goal, value) {
+  if (value == null || !Number.isFinite(value)) return null;
+  const dir = (_goalMeta[goal.metric] || {}).direction || (goal.metric === 'score' ? 'min' : 'max');
+  return dir === 'min' ? value >= goal.target : value <= goal.target;
+}
+
+function _weekStart() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));   // Monday
+  return d.getTime() / 1000;
+}
+
+async function loadGoals() {
+  try {
+    const resp = await fetch('/api/goals', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const body = await resp.json();
+    window._pmGoals = body.goals || [];
+    _goalMeta = body.metrics || {};
+  } catch (_) { /* goals are optional */ }
+}
+
+async function saveGoals(goals) {
+  try {
+    const resp = await fetch('/api/goals', {
+      method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ goals }),
+    });
+    if (resp.ok) window._pmGoals = (await resp.json()).goals || [];
+  } catch (_) { /* keep the old list */ }
+  renderProgress();
+}
+
+function addGoal(metric, target) {
+  const goals = (window._pmGoals || []).filter((g) => g.metric !== metric);
+  goals.push({ metric, target: Number(target) });
+  saveGoals(goals);
+}
+
+function removeGoal(metric) {
+  saveGoals((window._pmGoals || []).filter((g) => g.metric !== metric));
+}
+
+function submitGoalForm(event) {
+  event.preventDefault();
+  const form = event.target;
+  const target = Number(form.elements.target.value);
+  if (!Number.isFinite(target) || target <= 0) return;
+  addGoal(form.elements.metric.value, target);
+}
+
+async function loadProgress() {
+  const box = document.getElementById('history-progress');
+  if (!box) return;
+  box.classList.add('is-loading');
+  try {
+    const [resp] = await Promise.all([fetch('/api/sessions/trends?limit=40', { headers: authHeaders() }), loadGoals()]);
+    _trendPoints = resp.ok ? ((await resp.json()).points || []) : [];
+  } catch (_) {
+    _trendPoints = [];
+  }
+  box.classList.remove('is-loading');
+  renderProgress();
+}
+
+function setTrendKind(kind) {
+  _trendKind = kind;
+  renderProgress();
+}
+
+/** One single-series line chart (inline SVG): 2px line, r4 dots with a surface ring, goal line, end label. */
+function _trendChart(cfg, pts, goal) {
+  const W = 300, H = 120, L = 34, R = 40, T = 12, B = 20;
+  const vals = pts.map((p) => p[cfg.key]);
+  const usable = pts.map((p, i) => ({ p, i, v: vals[i] })).filter((d) => d.v != null && Number.isFinite(d.v));
+  const head = `<div class="tc-head"><span class="tc-title">${escapeHtml(cfg.title)}</span>`
+    + (usable.length ? `<span class="tc-last">${escapeHtml(cfg.fmt(usable[usable.length - 1].v))}</span>` : '') + '</div>';
+  if (usable.length < 2) {
+    return `<div class="trend-card">${head}<div class="tc-empty">${usable.length ? 'One session so far — do another to see a trend.' : 'No data yet.'}</div></div>`;
+  }
+  let lo = Math.min(...usable.map((d) => d.v)), hi = Math.max(...usable.map((d) => d.v));
+  if (goal) { lo = Math.min(lo, goal.target); hi = Math.max(hi, goal.target); }
+  if (cfg.key === 'score') { lo = Math.min(lo, 0); hi = Math.max(hi, 100); }
+  if (hi - lo < 1e-9) { lo -= Math.max(1, Math.abs(lo) * 0.2); hi += Math.max(1, Math.abs(hi) * 0.2); }   // flat series
+  lo = Math.max(0, lo - (hi - lo) * 0.1);
+  hi = cfg.key === 'score' ? 100 : (hi + (hi - lo) * 0.1 || 1);
+  const n = usable.length;
+  const x = (k) => L + (n === 1 ? 0 : (k / (n - 1)) * (W - L - R));
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const ticks = [lo, (lo + hi) / 2, hi];
+  const grid = ticks.map((t) => `<line class="tc-grid" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/>
+      <text class="tc-tick" x="${L - 6}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end">${escapeHtml(cfg.fmt(t))}</text>`).join('');
+  const line = usable.map((d, k) => `${k ? 'L' : 'M'}${x(k).toFixed(1)},${y(d.v).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(n - 1).toFixed(1)},${(H - B).toFixed(1)} L${x(0).toFixed(1)},${(H - B).toFixed(1)} Z`;
+  const goalHtml = goal
+    ? `<line class="tc-goal" x1="${L}" x2="${W - R}" y1="${y(goal.target).toFixed(1)}" y2="${y(goal.target).toFixed(1)}"/>
+       <text class="tc-goal-label" x="${W - R + 4}" y="${(y(goal.target) + 3).toFixed(1)}">goal</text>`
+    : '';
+  const dots = usable.map((d, k) => `<circle class="tc-dot" cx="${x(k).toFixed(1)}" cy="${y(d.v).toFixed(1)}" r="4"/>`).join('');
+  const last = usable[n - 1];
+  const endLabel = `<text class="tc-end" x="${(x(n - 1) + 8).toFixed(1)}" y="${(y(last.v) + 4).toFixed(1)}">${escapeHtml(cfg.fmt(last.v))}</text>`;
+  const first = new Date(Number(usable[0].p.created_at) * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const lastDate = new Date(Number(last.p.created_at) * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const data = escapeHtml(JSON.stringify(usable.map((d, k) => ({
+    x: +x(k).toFixed(1), y: +y(d.v).toFixed(1), v: cfg.fmt(d.v),
+    when: new Date(Number(d.p.created_at) * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
+    kind: d.p.session_kind, sid: d.p.session_id,
+    met: goal ? _goalMet(goal, d.v) : null,
+  }))));
+  return `
+    <div class="trend-card">${head}
+      <div class="tc-plot" data-points="${data}">
+        <svg viewBox="0 0 ${W} ${H}" class="tc-svg" role="img" aria-label="${escapeHtml(cfg.title)} over ${n} sessions, latest ${escapeHtml(cfg.fmt(last.v))}">
+          ${grid}${goalHtml}
+          <path class="tc-area" d="${area}"/>
+          <path class="tc-line" d="${line}"/>
+          ${dots}${endLabel}
+          <line class="tc-cross hidden" x1="0" x2="0" y1="${T}" y2="${H - B}"/>
+          <text class="tc-axis" x="${L}" y="${H - 5}">${escapeHtml(first)}</text>
+          <text class="tc-axis" x="${W - R}" y="${H - 5}" text-anchor="end">${escapeHtml(lastDate)}</text>
+        </svg>
+        <div class="tc-tip hidden" role="status"></div>
+      </div>
+    </div>`;
+}
+
+function _bindTrendHover(root) {
+  root.querySelectorAll('.tc-plot').forEach((plot) => {
+    let pts = [];
+    try { pts = JSON.parse(plot.dataset.points || '[]'); } catch (_) { return; }
+    const svg = plot.querySelector('svg');
+    const cross = plot.querySelector('.tc-cross');
+    const tip = plot.querySelector('.tc-tip');
+    const dots = [...plot.querySelectorAll('.tc-dot')];
+    const show = (k) => {
+      const d = pts[k];
+      if (!d) return;
+      const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+      cross.setAttribute('x1', d.x); cross.setAttribute('x2', d.x);
+      cross.classList.remove('hidden');
+      dots.forEach((el, j) => el.classList.toggle('is-hover', j === k));
+      tip.replaceChildren();
+      const v = document.createElement('b'); v.textContent = d.v;
+      const meta = document.createElement('span');
+      meta.textContent = `${d.when} · ${d.kind === 'meeting' ? 'meeting' : 'practice'}${d.met === true ? ' · on goal ✓' : d.met === false ? ' · off goal' : ''}`;
+      tip.append(v, meta);
+      tip.classList.remove('hidden');
+      const left = Math.min(Math.max(d.x * scale, 60), svg.getBoundingClientRect().width - 60);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${Math.max(0, d.y * scale - 46)}px`;
+      plot.dataset.k = k;
+    };
+    const hide = () => { cross.classList.add('hidden'); tip.classList.add('hidden'); dots.forEach((el) => el.classList.remove('is-hover')); };
+    plot.addEventListener('pointermove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      const vx = ((e.clientX - rect.left) / rect.width) * svg.viewBox.baseVal.width;
+      let best = 0;
+      pts.forEach((d, k) => { if (Math.abs(d.x - vx) < Math.abs(pts[best].x - vx)) best = k; });
+      show(best);
+    });
+    plot.addEventListener('pointerleave', hide);
+    plot.tabIndex = 0;
+    plot.addEventListener('focus', () => show(pts.length - 1));
+    plot.addEventListener('blur', hide);
+    plot.addEventListener('keydown', (e) => {
+      const k = Number(plot.dataset.k ?? pts.length - 1);
+      if (e.key === 'ArrowLeft') show(Math.max(0, k - 1));
+      else if (e.key === 'ArrowRight') show(Math.min(pts.length - 1, k + 1));
+      else if (e.key === 'Enter' && pts[k]?.sid) openPastSession(pts[k].sid);
+    });
+    plot.addEventListener('click', () => {
+      const k = Number(plot.dataset.k);
+      if (Number.isInteger(k) && pts[k]?.sid) openPastSession(pts[k].sid);
+    });
+  });
+}
+
+function _goalProgress(goal, practicePts) {
+  const week = practicePts.filter((p) => Number(p.created_at) >= _weekStart());
+  if (goal.metric === 'sessions_per_week') {
+    const done = week.length;
+    return { frac: Math.min(1, done / goal.target), text: `${done} of ${goal.target} this week`, met: done >= goal.target };
+  }
+  const vals = week.map((p) => p[goal.metric]).filter((v) => v != null && Number.isFinite(v));
+  if (!vals.length) return { frac: 0, text: 'No practice sessions yet this week', met: null };
+  const onTarget = vals.filter((v) => _goalMet(goal, v)).length;
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const cfg = TREND_CHARTS.find((c) => c.key === goal.metric);
+  return {
+    frac: onTarget / vals.length,
+    text: `${onTarget} of ${vals.length} session${vals.length === 1 ? '' : 's'} on target · average ${cfg ? cfg.fmt(avg) : avg.toFixed(1)}`,
+    met: _goalMet(goal, avg),
+  };
+}
+
+function renderProgress() {
+  const box = document.getElementById('history-progress');
+  if (!box) return;
+  const all = _trendPoints;
+  const pts = all.filter((p) => _trendKind === 'all' || p.session_kind === _trendKind);
+  const practice = all.filter((p) => p.session_kind !== 'meeting');
+  const goals = window._pmGoals || [];
+  const goalFor = (key) => goals.find((g) => g.metric === key) || null;
+  const chip = (kind, label) => `<button type="button" class="trend-chip${_trendKind === kind ? ' is-on' : ''}" onclick="setTrendKind('${kind}')">${label}</button>`;
+  const goalRows = goals.map((g) => {
+    const pr = _goalProgress(g, practice);
+    return `
+      <div class="goal-row">
+        <div class="goal-top"><b>${escapeHtml(_goalText(g))}</b>
+          <span class="goal-state${pr.met === false ? ' is-behind' : ''}">${pr.met === true ? '✓ on track' : pr.met === false ? 'not yet' : ''}</span>
+          <button type="button" class="goal-remove" title="Remove this goal" aria-label="Remove goal" onclick="removeGoal('${escapeHtml(g.metric)}')">×</button></div>
+        <div class="goal-bar"><i style="width:${(pr.frac * 100).toFixed(0)}%" class="${pr.met ? 'is-met' : ''}"></i></div>
+        <div class="goal-sub">${escapeHtml(pr.text)}</div>
+      </div>`;
+  }).join('');
+  const unused = GOAL_PRESETS.filter((g) => !goalFor(g.metric));
+  const metricOptions = Object.entries(_goalMeta).map(([k, m]) => `<option value="${escapeHtml(k)}">${escapeHtml(m.label)} (${m.direction === 'min' ? 'at least' : 'at most'})</option>`).join('');
+  const tableRows = pts.slice().reverse().map((p) => `<tr>
+      <td>${escapeHtml(_sessionDate(p).toLocaleDateString())}</td><td>${p.session_kind === 'meeting' ? 'Meeting' : 'Practice'}</td>
+      ${TREND_CHARTS.map((c) => `<td>${p[c.key] == null ? '–' : escapeHtml(c.fmt(p[c.key]))}</td>`).join('')}</tr>`).join('');
+  box.innerHTML = `
+    <div class="progress-section">
+      <div class="sc-events-title">Your progress</div>
+      <div class="trend-filters" role="group" aria-label="Which sessions">
+        ${chip('practice', 'Practice')}${chip('meeting', 'Meetings')}${chip('all', 'All')}
+        <span class="trend-count">${pts.length} session${pts.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="trend-grid">${TREND_CHARTS.map((c) => _trendChart(c, pts, goalFor(c.key))).join('')}</div>
+      ${pts.length ? `<details class="trend-table"><summary>Show as table</summary>
+        <table><thead><tr><th>Date</th><th>Type</th>${TREND_CHARTS.map((c) => `<th>${escapeHtml(c.title)}</th>`).join('')}</tr></thead>
+        <tbody>${tableRows}</tbody></table></details>` : ''}
+      <div class="goals-card">
+        <div class="sc-events-title">Practice goals <span class="report-badge">this week</span></div>
+        ${goalRows || '<div class="recent-empty">No goals yet. Pick one to track week by week.</div>'}
+        ${unused.length ? `<div class="goal-presets">${unused.map((g) => `<button type="button" class="trend-chip" onclick="addGoal('${g.metric}', ${g.target})">+ ${escapeHtml(g.label)}</button>`).join('')}</div>` : ''}
+        ${metricOptions ? `<form class="goal-form" onsubmit="submitGoalForm(event)">
+          <select name="metric" aria-label="Goal metric">${metricOptions}</select>
+          <input name="target" type="number" min="0.1" step="0.1" required placeholder="target" aria-label="Target value" />
+          <button type="submit" class="asset-download">Set goal</button></form>` : ''}
+      </div>
+    </div>`;
+  _bindTrendHover(box);
+}
+
+/** Under the score: how this session did against each goal. */
+function renderGoalCheck(data) {
+  const goals = (window._pmGoals || []).filter((g) => g.metric !== 'sessions_per_week');
+  if (!goals.length || data.insufficient_speech) return '';
+  const point = _sessionTrendPoint(data);
+  const items = goals.map((g) => {
+    const v = point[g.metric];
+    const met = _goalMet(g, v);
+    if (met == null) return '';
+    const cfg = TREND_CHARTS.find((c) => c.key === g.metric);
+    return `<span class="goal-check ${met ? 'is-met' : 'is-miss'}">${met ? '✓' : '✗'} ${escapeHtml(_goalText(g))} · this session ${escapeHtml(cfg ? cfg.fmt(v) : String(v))}</span>`;
+  }).filter(Boolean);
+  return items.length ? `<div class="goal-checks"><span class="rc-title">Goals</span>${items.join('')}</div>` : '';
+}
+
+loadGoals();
+
 document.getElementById('btn-history')?.addEventListener('click', showHistory);
 
 // Deep links from Meeting Mode: /app?session=<id> opens a saved review, /app?view=history the list.
@@ -2607,7 +3191,9 @@ function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function markPipelineStepDone(id) {
