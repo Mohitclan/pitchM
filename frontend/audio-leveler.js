@@ -1,5 +1,5 @@
 /**
- * PitchMirror — audio levelling for speech-to-text.
+ * Pitchlight — audio levelling for speech-to-text.
  *
  * Every audio stream that is transcribed (your mic, the meeting's audio) goes through:
  *   high-pass filter (cuts desk thumps / AC rumble below 85 Hz)

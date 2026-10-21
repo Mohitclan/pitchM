@@ -1,5 +1,5 @@
 """
-PitchMirror — post-session multimodal asset generation.
+Pitchlight — post-session multimodal asset generation.
 
 Creates low-cost visual artifacts (max 2 images) for the scorecard:
 1) Ideal delivery posture/camera setup
@@ -85,7 +85,7 @@ def _render_fallback_card(title: str, subtitle: str) -> bytes:
     draw.rounded_rectangle((44, 44, 1236, 676), radius=28, outline=(59, 130, 246), width=4)
     draw.text((86, 96), title, fill=(240, 249, 255))
     draw.text((86, 172), subtitle, fill=(147, 197, 253))
-    draw.text((86, 612), "PitchMirror demo fallback visual", fill=(148, 163, 184))
+    draw.text((86, 612), "Pitchlight demo fallback visual", fill=(148, 163, 184))
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=84, optimize=True)

@@ -1,5 +1,5 @@
 /**
- * PitchMirror — "Who's testing?" profiles for the pilot.
+ * Pitchlight — "Who's testing?" profiles for the pilot.
  *
  * During the pilot several colleagues use the same laptop/browser. Each tester gets
  * their own user id, so History, scores and feedback stay separate. Must load BEFORE

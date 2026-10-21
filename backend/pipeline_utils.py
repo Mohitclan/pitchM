@@ -1,5 +1,5 @@
 """
-PitchMirror — post-session pipeline utilities.
+Pitchlight — post-session pipeline utilities.
 
 Pure functions with no heavy dependencies so they can be imported
 independently in tests without pulling in the ADK/FastAPI stack.

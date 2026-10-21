@@ -1,5 +1,5 @@
 """
-PitchMirror — ADK live coaching agent.
+Pitchlight — ADK live coaching agent.
 
 Uses the Gemini native-audio model via ADK's run_live() for real-time
 bidirectional audio+video coaching with explicit tool-based metric tracking.

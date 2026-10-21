@@ -1,5 +1,5 @@
 """
-PitchMirror — FastAPI backend with ADK multi-agent architecture.
+Pitchlight — FastAPI backend with ADK multi-agent architecture.
 
 Session lifecycle:
   1. Browser connects via WebSocket /ws
@@ -667,19 +667,19 @@ def _make_run_config() -> RunConfig:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("PitchMirror starting up")
+    logger.info("Pitchlight starting up")
     if not _db.durable:
         logger.warning(
             "No durable storage — session history will not persist across restarts. "
             "Set GOOGLE_CLOUD_PROJECT (Firestore) or LOCAL_DB_PATH (SQLite)."
         )
     yield
-    logger.info("PitchMirror shutting down")
+    logger.info("Pitchlight shutting down")
     # Cancel queued (not-yet-started) PDF jobs; running conversions finish naturally.
     _pdf_executor.shutdown(wait=False, cancel_futures=True)
 
 
-app = FastAPI(title="PitchMirror", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Pitchlight", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1141,7 +1141,7 @@ async def api_export_session(request: Request, session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     recap = payload.get("recap") or {}
     doc = {
-        "source": "pitchmirror",
+        "source": "pitchlight",
         "session_id": payload.get("session_id"),
         "created_at": payload.get("created_at"),
         "client": payload.get("client", ""),
@@ -3414,7 +3414,7 @@ async def _run_post_session(websocket: WebSocket, state: SessionState):
 
 def _build_context_message(state: SessionState) -> str:
     return (
-        "You are analyzing a completed PitchMirror coaching session.\n\n"
+        "You are analyzing a completed Pitchlight coaching session.\n\n"
         f"USER ID: {state.user_id}\n"
         f"SESSION MODE: {state.coach_mode}\n"
         + (

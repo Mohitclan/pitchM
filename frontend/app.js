@@ -1,5 +1,5 @@
 /**
- * PitchMirror — Browser client
+ * Pitchlight — Browser client
  *
  * Responsibilities:
  * - Capture webcam + microphone via getUserMedia
@@ -1910,7 +1910,7 @@ function _reviewPlainText(data) {
   const context = (data.delivery_context || 'virtual').replace(/_/g, ' ');
   const goal = (data.primary_goal || 'balanced').replace(/_/g, ' ');
   const out = [
-    'PITCHMIRROR SESSION REVIEW',
+    'PITCHLIGHT SESSION REVIEW',
     `${_sessionDate(data).toLocaleString()} · ${mode} · ${context} · goal: ${goal}`,
     `Score: ${Number(data.overall_score || 0).toFixed(1)}/100 · Duration: ${formatTime(Number(data.duration_seconds) || 0)} · ${_userWordCount(rows)} words spoken`,
     '',
@@ -1993,7 +1993,7 @@ function downloadSessionReview() {
   const a = document.createElement('a');
   const stamp = _sessionDate(data).toISOString().slice(0, 16).replace(/[:T]/g, '-');
   a.href = url;
-  a.download = `pitchmirror-session-${stamp}.txt`;
+  a.download = `pitchlight-session-${stamp}.txt`;
   document.body.appendChild(a);
   a.click();
   a.remove();

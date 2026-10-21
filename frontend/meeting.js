@@ -1,5 +1,5 @@
 /**
- * PitchMirror — Meeting Mode client.
+ * Pitchlight — Meeting Mode client.
  *
  * Runs the coach next to a real call (Zoom, Google Meet, Teams, …):
  * - streams the microphone; the server transcribes it with a dedicated live speech-to-text
@@ -515,7 +515,7 @@
     link.rel = 'stylesheet';
     link.href = new URL(document.querySelector('link[href*="bubble.css"]')?.getAttribute('href') || '/static/bubble.css', location.href).href;
     pipWindow.document.head.appendChild(link);
-    pipWindow.document.title = 'PitchMirror coach';
+    pipWindow.document.title = 'Pitchlight coach';
     pipWindow.document.body.className = 'pm-pip-body';
     pipWindow.document.body.appendChild(bubble);
     bubble.classList.add('in-pip');
@@ -1277,7 +1277,7 @@
       startedAt = Date.now();
       setupEl.classList.add('hidden');
       liveEl.classList.remove('hidden');
-      document.title = '● Coaching — PitchMirror';
+      document.title = '● Coaching — Pitchlight';
       window.__pmSessionActive = true;
       sendBrief();
       await startAudio();
@@ -1331,7 +1331,7 @@
     if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
     if (otherStream) { otherStream.getTracks().forEach((t) => t.stop()); otherStream = null; }
     videoEl.srcObject = null;
-    document.title = 'PitchMirror — Meeting Mode';
+    document.title = 'Pitchlight — Meeting Mode';
   }
 
   function endMeeting() {

@@ -1,9 +1,9 @@
 """
-PitchMirror — Pre-build smoke test.
+Pitchlight — Pre-build smoke test.
 
 Run this BEFORE investing hours in the build.
 Gate criteria:
-  - Live API round-trip p95 < 3s  → proceed with PitchMirror
+  - Live API round-trip p95 < 3s  → proceed with Pitchlight
   - Live API p95 >= 3s            → reassess or use fallback (ScreenPilot)
 
 Usage:
@@ -53,7 +53,7 @@ async def run_smoke_test():
 
     client = genai.Client(api_key=api_key)
 
-    print(f"PitchMirror Smoke Test — model: {LIVE_MODEL}")
+    print(f"Pitchlight Smoke Test — model: {LIVE_MODEL}")
     print(f"Running {N_RUNS} round-trip tests...\n")
 
     latencies = []
@@ -84,9 +84,9 @@ async def run_smoke_test():
     print(f"{'─'*40}")
 
     if p95 < 1.5:
-        print("\n✓ EXCELLENT — build PitchMirror, demo will be snappy")
+        print("\n✓ EXCELLENT — build Pitchlight, demo will be snappy")
     elif p95 < 3.0:
-        print("\n✓ PASS — proceed with PitchMirror (may add loading indicator for demo)")
+        print("\n✓ PASS — proceed with Pitchlight (may add loading indicator for demo)")
     elif p95 < 5.0:
         print("\n⚠ MARGINAL — consider ScreenPilot as primary if you want reliability")
     else:

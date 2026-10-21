@@ -1,5 +1,5 @@
 """
-PitchMirror — scorecard builder.
+Pitchlight — scorecard builder.
 Converts SessionState into a structured display-ready scorecard dict.
 """
 from __future__ import annotations

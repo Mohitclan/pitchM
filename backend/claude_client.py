@@ -1,5 +1,5 @@
 """
-PitchMirror — Claude (Anthropic API) for the text work.
+Pitchlight — Claude (Anthropic API) for the text work.
 
 Gemini keeps the live-audio jobs (speech-to-text, the practice-mode voice coach);
 Claude does the text jobs, where the free Gemini tier kept hitting daily caps and

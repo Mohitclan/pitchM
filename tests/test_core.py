@@ -1,5 +1,5 @@
 """
-PitchMirror — core unit tests.
+Pitchlight — core unit tests.
 
 Run with:  python -m pytest tests/ -v
 """

@@ -1,4 +1,4 @@
-# PitchMirror
+# Pitchlight (formerly PitchMirror)
 
 > Real-time AI speaking coach. Rehearse talks, interviews, demos, or pitches while PitchMirror listens, watches, and interrupts with measured feedback.
 

@@ -1,5 +1,5 @@
 """
-PitchMirror — dedicated live speech-to-text.
+Pitchlight — dedicated live speech-to-text.
 
 The coaching model's own input transcription is a by-product of a conversational
 audio model: it guesses the language per word, drops words and stalls while the

@@ -1,5 +1,5 @@
 """
-PitchMirror — post-session analysis agents.
+Pitchlight — post-session analysis agents.
 
 Each agent is a module-level singleton (stateless — all state lives in sessions).
 main.py orchestrates them manually with asyncio.gather so it can emit real-time
@@ -113,7 +113,7 @@ Format as 2 bullets. No fluff. No generic advice.""",
 SYNTHESIS_AGENT = LlmAgent(
     name="synthesis_agent",
     model=ANALYSIS_MODEL,
-    instruction="""You are writing the final PitchMirror speaking coaching report.
+    instruction="""You are writing the final Pitchlight speaking coaching report.
 
 You have three analyses provided to you:
 - delivery_analysis: delivery dimensions (filler words, pace, eye contact, authority, repetition)

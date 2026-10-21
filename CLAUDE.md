@@ -1,4 +1,10 @@
-# PitchMirror — project knowledge and current state
+# Pitchlight (formerly PitchMirror) — project knowledge and current state
+
+**Name:** the product is called **Pitchlight** (renamed 2026-10-21; pitchlight.ai, getpitchlight.com and
+pitchlightai.com were unregistered at the time, no trademark search done yet). Only user-visible text was
+renamed. Internal identifiers deliberately keep `pitchmirror` so saved data survives: localStorage keys
+(`pitchmirror_*`), `PITCHMIRROR_*` env vars, `data/pitchmirror.db`, the Docker service/volume names, ADK
+`APP_NAME`, `/health` service field, and the repo/folder names.
 
 Read this first in a new session. Last updated 2026-10-21. `PROGRESS.md` is the detailed change log (one section per change); this file is the summary.
 

@@ -1,5 +1,5 @@
 /**
- * PitchMirror — in-browser gaze tracking (MediaPipe Face Landmarker).
+ * Pitchlight — in-browser gaze tracking (MediaPipe Face Landmarker).
  *
  * Runs face landmark detection on the local webcam ~6 times per second and
  * classifies each moment as one of:

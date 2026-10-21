@@ -1,5 +1,5 @@
 """
-PitchMirror — pre-call brief for Meeting Mode.
+Pitchlight — pre-call brief for Meeting Mode.
 
 Before a meeting the presenter can paste context (client, agenda, notes) and/or the
 key points they must cover. During the meeting the fast Claude model checks which

@@ -1,5 +1,5 @@
 """
-PitchMirror — coaching constants and dynamic system prompt builder.
+Pitchlight — coaching constants and dynamic system prompt builder.
 """
 import os
 
@@ -132,7 +132,7 @@ def build_system_prompt(
     goal = normalize_primary_goal(primary_goal)
     persona_prompt = _PERSONA_PROMPT.get(persona, _PERSONA_PROMPT["coach"])
 
-    base = """You are PitchMirror, a constructive real-time speaking coach.
+    base = """You are Pitchlight, a constructive real-time speaking coach.
 {persona_prompt}
 
 You are simultaneously listening to the speaker AND watching webcam frames{screen_suffix}.

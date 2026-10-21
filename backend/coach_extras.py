@@ -1,5 +1,5 @@
 """
-PitchMirror — helpers for the meeting/practice extras: talk time, live commitments,
+Pitchlight — helpers for the meeting/practice extras: talk time, live commitments,
 past-call memory, pre-call rehearsal, practice rewrites, progress trends and goals.
 
 Pure functions (prompts, parsers, small calculations) so they are easy to test;

@@ -1,5 +1,5 @@
 /**
- * PitchMirror — shared rehearsal helpers (Meeting Mode pre-call rehearsal, practice retries).
+ * Pitchlight — shared rehearsal helpers (Meeting Mode pre-call rehearsal, practice retries).
  *
  * - listen(): streams the mic to /ws?kind=rehearsal and returns finished lines of speech
  *   (the server's live transcriber; nothing is coached or saved)

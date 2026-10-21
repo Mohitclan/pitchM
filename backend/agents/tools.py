@@ -1,5 +1,5 @@
 """
-PitchMirror — ADK tool definitions.
+Pitchlight — ADK tool definitions.
 
 Tools are created as closures over SessionState so they can:
   1. Update structured metrics (synchronously)

@@ -324,3 +324,12 @@ Nine features from the "what more can we add" list. Helpers (prompts, parsers, c
 **Not yet tested live:** a real call with commitments/talk-share/previous-call, a spoken rehearsal and a retry
 (the in-app browser has no mic — test in Chrome). Cost: rehearsal ≈ 2 Haiku calls; commitments ≈ 1 Haiku call
 per promise-like line; rewrites 1 report call per practice session.
+
+## Renamed to Pitchlight — 2026-10-21
+
+All user-visible "PitchMirror" text → "Pitchlight": page titles and logos, landing page (mock URL now
+pitchlight.ai), the live coach's and report writer's self-name, review/feedback download names
+(`pitchlight-session-*.txt`, `pitchlight-pilot-feedback-*.csv`), export webhook `source`, code headers.
+Internal identifiers unchanged on purpose (see CLAUDE.md "Name"). Static files bumped to `?v=20261021b`.
+Not renamed: the product films in `video/` (narration and captures still say PitchMirror) and README/PLAN/docs
+from the hackathon.

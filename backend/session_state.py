@@ -1,5 +1,5 @@
 """
-PitchMirror — per-session state container.
+Pitchlight — per-session state container.
 
 Shared between the ADK tool closures, the WebSocket handler, and the scorecard builder.
 Tool functions write into this object synchronously (put_nowait); the WebSocket sender

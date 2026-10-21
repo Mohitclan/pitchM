@@ -1,5 +1,5 @@
 """
-PitchMirror — session / user-profile storage.
+Pitchlight — session / user-profile storage.
 Single module-level instance shared across all sessions — no per-session init churn.
 
 Storage backends, in priority order:
