@@ -42,6 +42,10 @@ PitchMirror is an **AI speaking coach**. It listens while you talk, gives short 
    positive notes, objection cards from prepared answers, a question coach and a next-step guard; practice side
    panel with live stats, key-point checklist, advice cards and "Say it better" (`?feedback=live|end`).
 
+**Accounts (2026-10-22):** `AUTH_MODE=accounts` makes every person sign in (`/login`) and keeps their data private
+(`backend/auth.py`, guide in `docs/ORG_ROLLOUT.md`). Off by default; the old "Who's testing?" picker remains for a
+one-laptop pilot.
+
 Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary, History (header link). A tester picker ("Who's testing?") separates users in one browser.
 
 ## Architecture
@@ -81,7 +85,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   ```
 
   Open Docker Desktop first with `open -a Docker` if needed. macOS has no `timeout` command.
-- **Tests:** `.venv/bin/python -m pytest tests/ -q` (91 tests). Live-model smoke test: `scripts/smoke_test.py`.
+- **Tests:** `.venv/bin/python -m pytest tests/ -q` (103 tests). Live-model smoke test: `scripts/smoke_test.py`.
 - **Chrome** with headphones is needed for the full experience.
 
 ## Where things stand (2026-10-21)

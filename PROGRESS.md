@@ -420,3 +420,36 @@ through the real WebSocket protocol: `scripts/live_demo_test.py meeting|practice
   "Priya" yourself in a tab and share its audio, so no second person is needed).
 - Not covered live: webcam features (gaze in your browser, video replay), >15 min calls, next-step guard and
   question coach (unit tests only). 91 tests passing.
+
+## Accounts: every person signs in and has their own data — 2026-10-22
+
+Simple built-in accounts, no outside service (`backend/auth.py`, `frontend/login.html`, `docs/ORG_ROLLOUT.md`).
+- **Switch:** `AUTH_MODE=accounts` (default off = old "Who's testing?" picker, so the laptop pilot is unchanged).
+  `ALLOWED_EMAIL_DOMAINS` limits who can register; `ADMIN_EMAILS` (or the first account) = admin.
+- **Flow:** /login → Create account (name, company email, password ≥ 8) or Sign in → /app. Cookie `pl_session`
+  (HttpOnly, SameSite=Lax, Secure behind HTTPS), sessions stored hashed in SQLite (`users`, `auth_sessions`),
+  passwords scrypt-hashed. Six wrong passwords in 10 min slows an account down.
+- **Identity:** the server uses the signed-in account for every API call and live WebSocket; a client-sent
+  `x-user-id` / `?user=` is ignored in accounts mode. So sessions, history, goals, pitches, clients, trends and
+  past-call memory are per person (tested with two users, including a spoofed id). Pages redirect to /login,
+  API answers 401, live connections close 1008 when not signed in.
+- **Admin-only:** `/pilot` and `/api/feedback/summary`. Limits follow the person (3 live sessions at once), not
+  the IP, so an office network works.
+- **Header:** the name menu (My history, Pilot feedback for admins, Sign out) replaces the picker; an expired
+  sign-in sends the person back to /login.
+- **CLI:** `python -m backend.auth list | reset-password | make-admin | adopt-data OLD_ID EMAIL`.
+- Tests: `tests/test_accounts.py` (10), 101 total passing. Verified in the browser on a temporary server
+  (create account → history → sign out → second person sees nothing of the first).
+
+### Accounts follow-up — usernames + landing page sign-in (2026-10-22)
+- Sign-in name can be a plain **username** (3–30 letters, numbers, `. _ -`) or an email. When
+  `ALLOWED_EMAIL_DOMAINS` is set only company emails are accepted; when empty (local testing) usernames work.
+- Landing page top bar: **Sign in** (accounts on) → after sign-in shows the name + Sign out; the hero note changes.
+- Local test run: `AUTH_MODE=accounts` is now set in the local `.env`; walked through landing → Sign in → create
+  `mansi` (first account = admin) → sessions → sign out → create `friend01` (empty history, cannot open Mansi's
+  session) → sign back in as `mansi` (sessions still there). 103 tests passing.
+- Old history sits under picker ids (e.g. `user-9a47e525-fbb`, 13 sessions); attach with
+  `python -m backend.auth adopt-data OLD_ID username`.
+- **Decision (owner, 2026-10-22): sign-up stays open in production too** — no company-email rule; leave
+  `ALLOWED_EMAIL_DOMAINS` unset. Docs corrected (`docs/ORG_ROLLOUT.md`). Open sign-up means anyone who can reach
+  the server can run sessions on the owner's Claude/Gemini credits — watch usage or keep it on a private network.

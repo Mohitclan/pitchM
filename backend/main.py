@@ -34,6 +34,7 @@ import re
 import sys
 import time
 import uuid
+from urllib.parse import quote
 from array import array
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -45,7 +46,7 @@ load_dotenv()
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from google.adk.agents.live_request_queue import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig, StreamingMode
@@ -81,6 +82,7 @@ from backend.transcriber import LiveTranscriber, transcription_enabled
 from backend import claude_client
 from backend import meeting_brief
 from backend import coach_extras
+from backend import auth as accounts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -393,6 +395,12 @@ def _audio_chunk_features(payload: bytes) -> dict:
 
 
 def _request_user_scope(request: Request) -> str:
+    if AUTH_ACCOUNTS:
+        # The signed-in account is the only identity; a client-supplied id is ignored.
+        user = getattr(request.state, "user", None) or accounts.user_from_request(request)
+        if not user:
+            raise HTTPException(status_code=401, detail="Sign in required")
+        return user["user_id"]
     raw_user = request.headers.get("x-user-id") or request.query_params.get("user")
     client_ip = _client_ip(
         request.headers.get("x-forwarded-for"),
@@ -576,11 +584,13 @@ CORS_ALLOWED_ORIGINS = _csv_env("CORS_ALLOWED_ORIGINS", "*")
 _CORS_ALLOW_CREDENTIALS = CORS_ALLOWED_ORIGINS != ["*"]
 API_BEARER_TOKEN = os.getenv("API_BEARER_TOKEN", "").strip()
 AUTH_ENABLED = bool(API_BEARER_TOKEN)
+# Built-in accounts (backend/auth.py): each person signs in and only sees their own data.
+AUTH_ACCOUNTS = accounts.accounts_enabled()
 
-if ENVIRONMENT == "production" and not API_BEARER_TOKEN:
+if ENVIRONMENT == "production" and not API_BEARER_TOKEN and not AUTH_ACCOUNTS:
     raise RuntimeError(
-        "API_BEARER_TOKEN must be set in production. "
-        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        "In production set AUTH_MODE=accounts (people sign in) or API_BEARER_TOKEN. "
+        "Generate a token with: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
 
 
@@ -630,6 +640,7 @@ def _ws_origin_allowed(origin: str | None) -> bool:
 HTTP_MAX_REQUESTS_PER_MINUTE = _int_env("HTTP_MAX_REQUESTS_PER_MINUTE", 120)
 WS_MAX_CONNECTIONS_PER_MINUTE = _int_env("WS_MAX_CONNECTIONS_PER_MINUTE", 20)
 WS_MAX_CONCURRENT_PER_IP = _int_env("WS_MAX_CONCURRENT_PER_IP", 2)
+WS_MAX_CONCURRENT_PER_USER = _int_env("WS_MAX_CONCURRENT_PER_USER", 3)
 WS_MAX_MESSAGES_PER_SECOND = _int_env("WS_MAX_MESSAGES_PER_SECOND", 30)
 WS_MAX_BYTES_PER_SECOND = _int_env("WS_MAX_BYTES_PER_SECOND", 1_000_000)
 WS_MAX_BINARY_FRAME_BYTES = _int_env("WS_MAX_BINARY_FRAME_BYTES", 600_000)
@@ -651,6 +662,8 @@ _ws_connection_limiter = SlidingWindowLimiter(
     window_seconds=60,
 )
 _ws_concurrent_limiter = ConcurrentSessionLimiter(WS_MAX_CONCURRENT_PER_IP)
+# With accounts on, limits follow the signed-in person (an office network shares one IP address).
+_ws_user_limiter = ConcurrentSessionLimiter(WS_MAX_CONCURRENT_PER_USER)
 
 
 def _make_run_config() -> RunConfig:
@@ -691,11 +704,31 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
+app.include_router(accounts.router)
+
+
+# With accounts on, these need no sign-in; everything else redirects (pages) or answers 401 (API).
+_PUBLIC_PATHS = {"/", "/health", "/api/health", "/api/config", "/login", "/guide", "/favicon.ico"}
+_PUBLIC_PREFIXES = ("/static/", "/auth/")
+_ADMIN_PATHS = {"/pilot", "/api/feedback/summary"}
 
 
 @app.middleware("http")
 async def http_hardening_middleware(request: Request, call_next):
-    if _auth_required_for_path(request.url.path):
+    path = request.url.path
+    user = None
+    if AUTH_ACCOUNTS:
+        user = accounts.user_from_request(request)
+        request.state.user = user
+        if user is None and path not in _PUBLIC_PATHS and not path.startswith(_PUBLIC_PREFIXES):
+            if path.startswith("/api"):
+                return JSONResponse(status_code=401, content={"detail": "Sign in required"})
+            return RedirectResponse(url=f"/login?next={quote(path)}", status_code=302)
+        if path in _ADMIN_PATHS and not accounts.is_admin(user):
+            if path.startswith("/api"):
+                return JSONResponse(status_code=403, content={"detail": "Admins only"})
+            return RedirectResponse(url="/app", status_code=302)
+    elif _auth_required_for_path(path):
         token = _extract_auth_token(
             request.headers.get("authorization"),
             request.headers.get("x-api-key"),
@@ -707,7 +740,7 @@ async def http_hardening_middleware(request: Request, call_next):
         request.headers.get("x-forwarded-for"),
         request.client.host if request.client else None,
     )
-    if not _http_rate_limiter.allow(client_ip):
+    if not _http_rate_limiter.allow(user["user_id"] if user else client_ip):
         return JSONResponse(status_code=429, content={"detail": "Too Many Requests"})
 
     response = await call_next(request)
@@ -731,6 +764,13 @@ async def root():
 # HTML pages must revalidate so a rebuilt app is picked up immediately; static
 # assets are cache-busted with ?v= in the pages instead.
 _NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+@app.get("/login")
+async def login_page(request: Request):
+    if AUTH_ACCOUNTS and getattr(request.state, "user", None):
+        return RedirectResponse(url="/app", status_code=302)
+    return FileResponse("frontend/login.html", headers=_NO_CACHE)
 
 
 @app.get("/app")
@@ -899,7 +939,8 @@ async def api_save_feedback(request: Request):
     would_use = str(body.get("would_use") or "").lower()
     feedback = {
         "user_id": user_id,
-        "tester": str(body.get("tester") or "").strip()[:60],
+        "tester": (request.state.user["name"] if AUTH_ACCOUNTS and getattr(request.state, "user", None)
+                   else str(body.get("tester") or "")).strip()[:60],
         "rating": rating,
         "helped": str(body.get("helped") or "").strip()[:1000],
         "annoying": str(body.get("annoying") or "").strip()[:1000],
@@ -1051,6 +1092,7 @@ async def api_config():
         "export_webhook": bool(EXPORT_WEBHOOK_URL),
         "export_label": EXPORT_WEBHOOK_LABEL,
         "transcription": transcription_enabled(),
+        "auth": "accounts" if AUTH_ACCOUNTS else "off",
     }
 
 
@@ -1265,15 +1307,25 @@ async def websocket_endpoint(websocket: WebSocket):
         websocket.client.host if websocket.client else None,
     )
 
-    token = _extract_auth_token(
-        websocket.headers.get("authorization"),
-        websocket.headers.get("x-api-key"),
-        websocket.query_params.get("token"),
-    )
-    if not _token_valid(token):
-        logger.warning("WS auth rejected: ip=%s", client_ip)
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
+    ws_user = None
+    if AUTH_ACCOUNTS:
+        ws_user = accounts.user_from_request(websocket)
+        if not ws_user:
+            logger.warning("WS rejected, not signed in: ip=%s", client_ip)
+            await websocket.close(code=1008, reason="Sign in required")
+            return
+    else:
+        token = _extract_auth_token(
+            websocket.headers.get("authorization"),
+            websocket.headers.get("x-api-key"),
+            websocket.query_params.get("token"),
+        )
+        if not _token_valid(token):
+            logger.warning("WS auth rejected: ip=%s", client_ip)
+            await websocket.close(code=1008, reason="Unauthorized")
+            return
+    limit_key = ws_user["user_id"] if ws_user else client_ip
+    concurrent_limiter = _ws_user_limiter if ws_user else _ws_concurrent_limiter
 
     origin = websocket.headers.get("origin")
     if not _ws_origin_allowed(origin):
@@ -1281,12 +1333,12 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1008, reason="Origin not allowed")
         return
 
-    if not _ws_connection_limiter.allow(client_ip):
+    if not _ws_connection_limiter.allow(limit_key):
         logger.warning("WS connection rate-limited: ip=%s", client_ip)
         await websocket.close(code=1008, reason="Connection rate limit exceeded")
         return
 
-    connection_acquired = _ws_concurrent_limiter.acquire(client_ip)
+    connection_acquired = concurrent_limiter.acquire(limit_key)
     if not connection_acquired:
         logger.warning("WS concurrent limit exceeded: ip=%s", client_ip)
         await websocket.close(code=1008, reason="Too many concurrent sessions")
@@ -1295,17 +1347,17 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         await websocket.accept()
     except Exception:
-        _ws_concurrent_limiter.release(client_ip)
+        concurrent_limiter.release(limit_key)
         raise
     session_id = str(uuid.uuid4())
     if (websocket.query_params.get("kind") or "").lower() == "rehearsal":
         try:
             await _rehearsal_ws(websocket, session_id)
         finally:
-            _ws_concurrent_limiter.release(client_ip)
+            concurrent_limiter.release(limit_key)
         return
     raw_user_id = websocket.query_params.get("user") or websocket.headers.get("x-user-id")
-    user_id = _resolve_user_scope(raw_user_id, client_ip=client_ip)
+    user_id = ws_user["user_id"] if ws_user else _resolve_user_scope(raw_user_id, client_ip=client_ip)
     coach_mode = normalize_coach_mode(websocket.query_params.get("mode"))
     delivery_context = normalize_delivery_context(websocket.query_params.get("context"))
     primary_goal = normalize_primary_goal(websocket.query_params.get("goal"))
@@ -1461,7 +1513,7 @@ async def websocket_endpoint(websocket: WebSocket):
         state.is_active = False
         state.stop_drain()          # sentinel → drain task exits cleanly
         live_request_queue.close()
-        _ws_concurrent_limiter.release(client_ip)
+        concurrent_limiter.release(limit_key)
 
     if state.other_stt_task is not None:
         try:

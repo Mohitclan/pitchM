@@ -12,9 +12,9 @@ Two demos, about 6 minutes each. Run them in this order: **Meeting Mode first** 
 2. Use **Chrome** (not the in-app browser) and **wear headphones**.
 3. In Chrome allow **microphone** and **camera** for localhost:8080.
 4. Open the tabs you need:
-   - Tab A: http://localhost:8080/meeting
-   - Tab B: `demo/demo-client.html` (the client "Priya" — five buttons that play her lines). Open it with *File → Open File* or drag it into Chrome.
-   - Tab C: http://localhost:8080/app (for the second demo)
+    - Tab A: http://localhost:8080/meeting
+    - Tab B: `demo/demo-client.html` (the client "Priya" — five buttons that play her lines). Open it with *File → Open File* or drag it into Chrome.
+    - Tab C: http://localhost:8080/app (for the second demo)
 5. Pick "Who's testing?" (top right) → a fresh name such as **Demo**, so the History starts clean.
 6. Do one dry run of the meeting's first two minutes so the mic/camera permissions and the face model have loaded (the first face-model load takes about 15 seconds).
 

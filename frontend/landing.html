@@ -596,6 +596,11 @@
     .nav-link { font-size: 14px; font-weight: 600; color: var(--ink-dim); text-decoration: none; margin-left: auto; margin-right: 18px; }
     .nav-link:hover { color: var(--violet); }
     .nav-link-2 { margin-left: 0; }
+    .nav-auth { font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none; margin-right: 14px; white-space: nowrap; }
+    a.nav-auth:hover { color: var(--violet); }
+    .nav-auth[hidden] { display: none; }
+    #nav-user button { font: inherit; font-weight: 600; color: var(--ink-dim); background: none; border: 0; cursor: pointer; padding: 0 0 0 8px; }
+    #nav-user button:hover { color: var(--violet); }
     .mode-choice {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -680,6 +685,9 @@
       <span class="nav-pill">Gemini Live Agent</span>
       <a href="/meeting" class="nav-link">Meeting Mode</a>
       <a href="/guide" class="nav-link nav-link-2">How to try it</a>
+      <!-- Shown only when accounts are on (see the script at the end of the page) -->
+      <a href="/login" id="nav-signin" class="nav-auth" hidden>Sign in</a>
+      <span id="nav-user" class="nav-auth" hidden></span>
       <a href="/app" class="nav-cta">Launch App →</a>
     </div>
   </nav>
@@ -711,7 +719,7 @@
       </div>
       <div class="hero-trust">
         <span>⊙</span>
-        <span>No signup required · No credit card</span>
+        <span id="hero-note">No signup required · No credit card</span>
       </div>
 
       <!-- Browser mockup -->
@@ -1075,5 +1083,27 @@
     </div>
   </footer>
 
+<script>
+// Sign in / account name in the top bar — only when this copy runs with accounts on.
+fetch('/auth/me', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((info) => {
+  if (!info || info.mode !== 'accounts') return;
+  const note = document.getElementById('hero-note');
+  if (note) note.textContent = 'Sign in to keep your own private history · No credit card';
+  if (!info.user) { document.getElementById('nav-signin').hidden = false; return; }
+  const box = document.getElementById('nav-user');
+  box.textContent = '';
+  const name = document.createElement('span');
+  name.textContent = info.user.name;
+  const out = document.createElement('button');
+  out.type = 'button';
+  out.textContent = 'Sign out';
+  out.addEventListener('click', async () => {
+    try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_) { /* ignore */ }
+    location.reload();
+  });
+  box.append(name, out);
+  box.hidden = false;
+}).catch(() => {});
+</script>
 </body>
 </html>

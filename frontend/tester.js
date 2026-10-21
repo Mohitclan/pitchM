@@ -118,7 +118,70 @@
     });
   }
 
+  /* ── Accounts mode: the signed-in person replaces the "Who's testing?" picker ── */
+  function renderAccount(user) {
+    const slot = document.getElementById('tester-slot');
+    if (!slot) return;
+    slot.innerHTML = `
+      <div class="tester-picker">
+        <button type="button" class="tester-btn" aria-haspopup="true" aria-expanded="false" title="${esc(user.email)}">
+          <span class="tester-dot" aria-hidden="true">${esc(user.name.slice(0, 1).toUpperCase())}</span>
+          <span class="tester-name">${esc(user.name)}</span><span aria-hidden="true">▾</span>
+        </button>
+        <div class="tester-menu" role="menu" hidden>
+          <div class="tester-menu-title">${esc(user.email)}</div>
+          <a role="menuitem" class="tester-item" href="/app?view=history">My history</a>
+          ${user.role === 'admin' ? '<a role="menuitem" class="tester-item" href="/pilot">Pilot feedback summary</a>' : ''}
+          <a role="menuitem" class="tester-item" href="/guide">How to try it</a>
+          <hr />
+          <button type="button" role="menuitem" class="tester-item" data-action="signout">Sign out</button>
+        </div>
+      </div>`;
+    const btn = slot.querySelector('.tester-btn');
+    const menu = slot.querySelector('.tester-menu');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      btn.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+    document.addEventListener('click', () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); });
+    menu.addEventListener('click', async (e) => {
+      if (!e.target.closest('[data-action="signout"]')) return;
+      if (window.__pmSessionActive && !window.confirm('A session is running. Signing out ends it. Continue?')) return;
+      try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (_) { /* ignore */ }
+      location.href = '/login';
+    });
+  }
+
+  // If a sign-in expires mid-use, send the person back to the login page instead of showing errors.
+  function guardExpiredSignIn() {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const resp = await realFetch(...args);
+      const url = String(typeof args[0] === 'string' ? args[0] : args[0]?.url || '');
+      if (resp.status === 401 && !url.includes('/auth/')) {
+        location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+      }
+      return resp;
+    };
+  }
+
   window.PMTester = { current, render };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
-  else render();
+  const start = () => {
+    fetch('/auth/me', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { mode: 'off' }))
+      .then((info) => {
+        if (info.mode === 'accounts') {
+          if (!info.user) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; return; }
+          window.PMUser = info.user;
+          guardExpiredSignIn();
+          renderAccount(info.user);
+        } else {
+          render();
+        }
+      })
+      .catch(() => render());
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
