@@ -44,7 +44,7 @@ On http://localhost:8080/meeting:
 
 Then click **Choose meeting audio** → pick the **demo-client tab** (Tab B) → tick **Share tab audio**. The page should say "Connected". Click **Start meeting coach**, allow the mic, and drag the floating bar to the top of your screen.
 
-Say to the audience: "This bar floats over Zoom, Teams or Meet. Nobody on the call can see it."
+Say to the audience: "This bar floats over Zoom, Teams or Meet. Nobody on the call can see it. The coach talks in the bar; anything I ask for — answers, catch-up, questions — opens in a separate box beside it, so I can read both at once."
 
 ## The call — what you say, and what Priya says
 
@@ -54,7 +54,7 @@ Press the matching button in the client tab at each **▶ cue**. Speak naturally
 |---|---|---|---|
 | 1 | ▶ Priya (button 1) | "Hi, thanks for making the time. I'm Priya, head of operations at Northwind Dental. We run forty clinics, and we want to go live by March." | Within ~20 s the **Facts card** fills in: *Priya, Head of Operations · runs 40 clinics · wants to go live by March*. About 20–35 s in, a **Next move** tip appears (e.g. "Ask who else signs off…") |
 | 2 | **You** | "Thanks Priya, great to meet you. So, um, basically Billing Hub is, uh, a centralized payments platform. It routes every payment through Stripe or Razorpay, so each clinic gets paid the right way, you know, wherever the patient is." *(look down at your notes for 6 seconds while you say it)* | An **eye-contact** nudge after ~5 s of looking down, a **filler** nudge ("4 filler words in 30 s"), points ticking |
-| 3 | ▶ Priya (button 2) | "How long does setup take for forty clinics?" | An **answer outline** appears in the bar within 1–2 s (three short points). Click **Answer** for a second one |
+| 3 | ▶ Priya (button 2) | "How long does setup take for forty clinics?" | An **answer outline** appears in the **Answers box beside the bar** within 1–2 s (three short points) while the coach's tips stay in the bar. Click **Answer** for another, **Catch up** for what just happened, **Earlier** for the list of everything Priya has asked (tap **Answer this** on any of them) |
 | 4 | **You** | "About two weeks. One week to import your data, and one week of staff training. I'll send you the rollout plan by Friday." | "**Noted: send the rollout plan (Friday)**" — your promise is tracked |
 | 5 | ▶ Priya (button 3) | "Honestly, that seems too expensive for us right now. We already use Zoho for our billing." | An **objection card** (🛡 Price) with *your prepared answer* — "pays back in about three months…" — plus three steps: acknowledge, answer, ask back. Her second sentence (Zoho) gets its own card. The client-mood chip turns **Skeptical** |
 | 6 | **You** | "That's fair. We plug into Zoho, so there is nothing to replace, and it pays back in about three months. What does your billing process look like today, and how many people touch it?" | Question counter goes up |
@@ -77,6 +77,9 @@ While it analyses (**about 70 seconds**), say: "It's now writing the recap, the 
 **Closing line:** "Everything stays on this laptop, and the coach never speaks into the call."
 
 ### Settings worth a mention
+
+- **Answers box** (the ▤ button in the bar): shows or hides the separate box. It remembers your choice. The box stays
+  until you clear it (⌫), so you can read at your own pace; the opacity slider in ⚙ makes everything more see-through.
 
 - **How chatty?**: Quiet (delivery flags only), Balanced (adds next moves and objection cards), Active.
 - **Rehearse this call** (in the brief): the AI plays the client and asks the 3 hardest questions before you go in.

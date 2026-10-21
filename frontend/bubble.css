@@ -22,14 +22,17 @@
 
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--pm-ink);
-  width: 380px;
+  display: flex; align-items: flex-start; gap: 10px;   /* coach bar | answers panel */
+  width: auto;
   opacity: var(--pm-opacity, 1);
   transition: opacity 0.3s ease;
   -webkit-font-smoothing: antialiased;
 }
 .pm-bubble .hidden { display: none !important; }
-.pm-bubble.is-idle { opacity: calc(var(--pm-opacity, 1) * 0.55); }
-.pm-bubble.is-idle:hover { opacity: var(--pm-opacity, 1); }
+/* Idle dimming is for the coach bar only — never for answers you may still be reading. */
+.pm-main { transition: opacity 0.3s ease; }
+.pm-bubble.is-idle .pm-main { opacity: 0.55; }
+.pm-bubble.is-idle:hover .pm-main { opacity: 1; }
 .pm-bubble[data-scale="s"] { zoom: 0.88; }
 .pm-bubble[data-scale="l"] { zoom: 1.15; }
 
@@ -220,3 +223,68 @@
 .pm-facts .pm-points-label { color: var(--pm-hint); }
 .pm-bubble[data-state="good"] { --pm-state-color: var(--pm-ok); }
 .pm-hint.is-objection .pm-hint-label { color: var(--pm-warn); }
+
+/* ── Two parts side by side: the coach bar (left) and the answers panel (right) ── */
+.pm-main { flex: 0 0 380px; width: 380px; min-width: 0; }
+
+.pm-assist {
+  flex: 0 0 340px; width: 340px; display: flex; flex-direction: column; gap: 8px;
+  min-height: 190px; max-height: 470px; padding: 12px 12px 10px;
+  /* "glass": see-through on the page; inside the Picture-in-Picture window it sits on the dark frame */
+  background: rgba(17, 19, 24, 0.88);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid var(--pm-line); border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+.pm-bubble[data-assist="off"] .pm-assist,
+.pm-bubble[data-size="compact"] .pm-assist { display: none; }
+.pm-bubble.in-pip .pm-assist { align-self: stretch; max-height: none; min-height: 240px; }
+
+.pm-assist-head { display: flex; align-items: center; gap: 8px; }
+.pm-assist-title { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: var(--pm-hint); }
+.pm-assist-tabs { display: inline-flex; gap: 4px; margin-left: auto; }
+.pm-assist-tab {
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--pm-ink-2); cursor: pointer;
+  padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; background: transparent;
+}
+.pm-assist-tab:hover { background: var(--pm-raised); }
+.pm-assist-tab.is-on { color: var(--pm-ink); background: var(--pm-raised); border-color: var(--pm-line); }
+.pm-assist-tab b { font-weight: 700; color: var(--pm-hint); }
+.pm-assist-clear { width: 26px; height: 26px; font-size: 12px; }
+.pm-assist-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+.pm-assist-list { display: flex; flex-direction: column; gap: 8px; }
+.pm-assist-list.hidden { display: none; }
+.pm-assist-list:empty::before {
+  content: attr(data-empty); display: block; padding: 18px 6px; text-align: center;
+  font-size: 13px; line-height: 1.5; color: var(--pm-ink-3);
+}
+
+/* One answer: label · time, the question it answers, then big readable lines. */
+.pm-ac { background: var(--pm-raised); border: 1px solid transparent; border-radius: 14px; padding: 10px 12px; }
+.pm-ac.is-new { border-color: rgba(147, 197, 253, 0.55); animation: pm-new 4s ease-out 1; }
+.pm-ac-head { display: flex; align-items: baseline; gap: 8px; }
+.pm-ac-label { font-size: 11px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; color: var(--pm-hint); }
+.pm-ac.kind-objection .pm-ac-label { color: var(--pm-warn); }
+.pm-ac.kind-catchup .pm-ac-label { color: var(--pm-ok); }
+.pm-ac.kind-ask .pm-ac-label { color: var(--pm-tip); }
+.pm-ac-time { margin-left: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: var(--pm-ink-3); }
+.pm-ac-q { margin: 5px 0 2px; font-size: 12.5px; color: var(--pm-ink-2); line-height: 1.4; }
+.pm-ac-lines { margin: 4px 0 0; padding-left: 20px; font-size: 15px; font-weight: 600; line-height: 1.5; }
+.pm-ac-lines.plain { list-style: none; padding-left: 0; }
+.pm-ac-lines li { margin: 3px 0; }
+
+/* The client's questions, newest last, each with "Answer this". */
+.pm-q { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; background: var(--pm-raised); border-radius: 12px; padding: 9px 12px; }
+.pm-q-time { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: var(--pm-ink-3); padding-top: 3px; }
+.pm-q-text { font-size: 14px; font-weight: 600; line-height: 1.45; }
+.pm-q-go {
+  grid-column: 2; justify-self: start; margin-top: 4px;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--pm-hint); cursor: pointer;
+  background: rgba(147, 197, 253, 0.12); border: 1px solid rgba(147, 197, 253, 0.3); border-radius: 999px; padding: 3px 10px;
+}
+.pm-q-go:hover { background: rgba(147, 197, 253, 0.22); }
+.pm-q-go:disabled { opacity: 0.55; cursor: progress; }
+.pm-q.is-answered .pm-q-text { color: var(--pm-ink-2); }
+
+.pm-assist-btn[aria-pressed="false"] { opacity: 0.55; }
+@keyframes pm-new { 0%, 70% { box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.2); } 100% { box-shadow: 0 0 0 0 transparent; } }

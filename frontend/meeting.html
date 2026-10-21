@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261022a" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261022a" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022a" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261022c" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261022c" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261022c" />
 </head>
 <body class="mt-page">
 
@@ -196,7 +196,9 @@
   <!-- The floating coach bubble. Moved into a Picture-in-Picture window when the
        browser supports it (stays on top of every app); otherwise it floats on this page. -->
   <template id="mt-bubble-template">
-    <div class="pm-bubble" data-state="idle" data-size="full" data-scale="m" data-open="false" data-details="false">
+    <div class="pm-bubble" data-state="idle" data-size="full" data-scale="m" data-open="false" data-details="false" data-assist="on">
+     <!-- Left: the coach bar (status, tips, controls). Right: the answers panel (see below). -->
+     <div class="pm-main">
       <!-- The pill: always visible. Shows status, the latest tip in short, agenda ring and timer. -->
       <div class="pm-pill pm-drag">
         <span class="pm-dot" aria-hidden="true"></span>
@@ -270,8 +272,10 @@
             <button type="button" class="pm-help-btn" data-help="answer" title="Help me answer their last question">💡<span>Answer</span></button>
             <button type="button" class="pm-help-btn" data-help="catchup" title="Catch me up on the last 2 minutes">↺<span>Catch up</span></button>
             <button type="button" class="pm-help-btn" data-help="ask" title="Suggest a question to ask">?<span>Ask</span></button>
+            <button type="button" class="pm-help-btn" data-help="earlier" title="What did the client ask earlier?">🗂<span>Earlier</span></button>
           </div>
           <div class="pm-ctl-group">
+            <button type="button" class="pm-icon pm-assist-btn" title="Show / hide the answers panel" aria-label="Show or hide the answers panel" aria-pressed="true">▤</button>
             <button type="button" class="pm-icon pm-settings-btn" title="Bubble settings" aria-label="Bubble settings" aria-expanded="false">⚙</button>
             <button type="button" class="pm-icon pm-size" title="Shrink to the pill" aria-label="Shrink to the pill">▁</button>
             <button type="button" class="pm-icon pm-pause" title="Pause listening" aria-label="Pause">❚❚</button>
@@ -280,15 +284,33 @@
         </div>
         <a class="pm-review hidden" target="_blank" rel="noopener">Open full review →</a>
       </div>
+     </div>
+
+     <!-- The answers panel: everything you READ lives here, so the coach bar stays for the coach.
+          Answer / Catch up / Ask results, objection cards, last-call notes, and the client's questions. -->
+     <aside class="pm-assist" aria-label="Answers and help" aria-live="polite">
+       <div class="pm-assist-head">
+         <span class="pm-assist-title">Answers &amp; help</span>
+         <span class="pm-assist-tabs" role="tablist">
+           <button type="button" class="pm-assist-tab is-on" role="tab" data-tab="answers" aria-selected="true">Answers</button>
+           <button type="button" class="pm-assist-tab" role="tab" data-tab="questions" aria-selected="false">Questions <b class="pm-qcount">0</b></button>
+         </span>
+         <button type="button" class="pm-icon pm-assist-clear" title="Clear answers" aria-label="Clear answers">⌫</button>
+       </div>
+       <div class="pm-assist-body">
+         <div class="pm-assist-list" data-view="answers"></div>
+         <div class="pm-assist-list hidden" data-view="questions"></div>
+       </div>
+     </aside>
     </div>
   </template>
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261022a"></script>
-  <script src="/static/audio-leveler.js?v=20261022a"></script>
-  <script src="/static/gaze.js?v=20261022a"></script>
-  <script src="/static/rehearse.js?v=20261022a"></script>
-  <script src="/static/meeting.js?v=20261022a"></script>
+  <script src="/static/tester.js?v=20261022c"></script>
+  <script src="/static/audio-leveler.js?v=20261022c"></script>
+  <script src="/static/gaze.js?v=20261022c"></script>
+  <script src="/static/rehearse.js?v=20261022c"></script>
+  <script src="/static/meeting.js?v=20261022c"></script>
 </body>
 </html>

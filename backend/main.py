@@ -1567,6 +1567,7 @@ def _stt_callback(state: SessionState, speaker: str):
         state._enqueue({"type": "transcript", "speaker": speaker, "text": text})
         state._enqueue({"type": "transcript_end", "speaker": speaker})
         if speaker == "other" and state.session_kind == "meeting" and looks_like_question(text):
+            _log_client_question(state, text)
             _request_answer_hint(state, text)
         if state.session_kind == "meeting" and coach_extras.looks_like_commitment(text):
             _track_commitment(state, speaker, text)
@@ -1949,6 +1950,19 @@ _MOOD_ALERTS = {
 }
 
 
+MAX_CLIENT_QUESTIONS = 40
+
+
+def _log_client_question(state: SessionState, text: str) -> None:
+    """Keep every question the other side asks and tell the answers panel."""
+    text = " ".join(text.split())[:300]
+    if not text or (state.client_questions and state.client_questions[-1]["text"] == text):
+        return
+    state.client_questions.append({"ts": round(state.duration_seconds(), 1), "text": text})
+    del state.client_questions[:-MAX_CLIENT_QUESTIONS]
+    state._enqueue({"type": "client_questions", "items": state.client_questions})
+
+
 def _last_other_question(state: SessionState) -> str:
     for seg in reversed(state.transcript):
         if seg.get("s") == "o" and looks_like_question(seg.get("t") or ""):
@@ -1961,13 +1975,14 @@ def _last_other_question(state: SessionState) -> str:
 
 def _help_prompt(state: SessionState, kind: str) -> str:
     brief = _brief_block(state)
-    convo = state.conversation_tail(seconds=150, max_chars=2500) or "(nothing yet)"
+    convo = state.conversation_tail(seconds=240 if kind == "catchup" else 150, max_chars=3200) or "(nothing yet)"
     if kind == "catchup":
         return (
             "A presenter in a live meeting lost focus for a moment. Recent conversation "
             "(You = presenter, Them = other participants):\n"
-            f"{convo}\n\nCatch them up in at most 2 short lines (max 15 words each): what was just discussed "
-            "and what Them is waiting for. Plain lines, no bullets, no preamble."
+            f"{convo}\n\nCatch them up in at most 4 short lines (max 18 words each): what was just discussed, "
+            "what Them asked or worried about, and what Them is waiting for now. "
+            "Plain lines, no bullets, no preamble."
         )
     # kind == "ask"
     return (
@@ -1989,11 +2004,11 @@ def _parse_help_reply(kind: str, text: str) -> list[str]:
                 lines.append(f"Why: {' '.join(m.group(2).split())}")
             return lines
     lines = [ln.strip(" -•*") for ln in raw.splitlines() if ln.strip(" -•*")]
-    return [" ".join(ln.split()[:24]) for ln in lines[:3]]
+    return [" ".join(ln.split()[:24]) for ln in lines[:4]]
 
 
-def _request_help(state: SessionState, kind: str) -> None:
-    """Presenter tapped a help button in the bubble."""
+def _request_help(state: SessionState, kind: str, question_index=None) -> None:
+    """Presenter tapped a help button in the bubble (or "Answer this" on an earlier client question)."""
     if kind not in _HELP_KINDS or state.live_closed:
         return
     last = getattr(state, "_help_last", {})
@@ -2004,7 +2019,10 @@ def _request_help(state: SessionState, kind: str) -> None:
     state._help_last = last
     state.record_timeline("help", f"Asked for help: {kind}")
     if kind == "answer":
-        question = _last_other_question(state)
+        question = ""
+        if isinstance(question_index, int) and 0 <= question_index < len(state.client_questions):
+            question = state.client_questions[question_index]["text"]      # an earlier question picked from the list
+        question = question or _last_other_question(state)
         if not question:
             state._enqueue({"type": "help_reply", "kind": kind, "title": "Help me answer",
                             "lines": ["No question from them yet — share the meeting audio so I can hear them."]})
@@ -2838,7 +2856,8 @@ async def _upstream(
                         _apply_brief(state, payload_json)
                         continue
                     if msg_type == "help" and state.session_kind == "meeting":
-                        _request_help(state, str(payload_json.get("kind") or ""))
+                        qi = payload_json.get("question_index")
+                        _request_help(state, str(payload_json.get("kind") or ""), qi if isinstance(qi, int) else None)
                         continue
                     if msg_type == "nudge_feedback":
                         _rate_nudge(state, payload_json.get("index"), payload_json.get("useful"))

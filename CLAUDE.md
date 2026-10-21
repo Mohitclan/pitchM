@@ -85,7 +85,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   ```
 
   Open Docker Desktop first with `open -a Docker` if needed. macOS has no `timeout` command.
-- **Tests:** `.venv/bin/python -m pytest tests/ -q` (103 tests). Live-model smoke test: `scripts/smoke_test.py`.
+- **Tests:** `.venv/bin/python -m pytest tests/ -q` (106 tests). Live-model smoke test: `scripts/smoke_test.py`.
 - **Chrome** with headphones is needed for the full experience.
 
 ## Where things stand (2026-10-21)

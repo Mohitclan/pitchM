@@ -44,6 +44,9 @@
   const THEM_HOLD_MS = 1200;          // "client is talking" if they were heard within this window
   const INTERRUPT_OVERLAP_MS = 800;   // you talking over them for this long = an interruption
   const PIP_WIDTH = 410;
+  const ASSIST_WIDTH = 350;           // the answers panel beside the coach bar (340 px + gap)
+  const ASSIST_KEY = 'pitchmirror_assist_panel';
+  const ASSIST_MAX_CARDS = 12;
   const HINT_HOLD_MS = 25000;         // an answer outline stays open this long
   const RECENT_MAX = 3;
   const FILLER_RE = /\b(um+|uh+|erm+|uhm+|you know|basically|literally|kind of|sort of|i mean)\b/gi;
@@ -148,6 +151,13 @@
   try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; } catch (_) { /* ignore */ }
   let gazeState = null;
   const eventCards = new Map();
+  // Answers panel (beside the coach bar): shown by default, remembered between meetings.
+  let assistOn = true;
+  try { assistOn = localStorage.getItem(ASSIST_KEY) !== 'off'; } catch (_) { /* default on */ }
+  let assistCards = [];              // newest first: { kind, label, question, lines, ts, isNew }
+  let clientQuestions = [];          // what the client asked: [{ ts, text }]
+  let answeredQuestions = new Set(); // indexes the presenter already asked for an answer to
+  let assistTab = 'answers';
   // Talk time from voice activity (100 ms chunks): totals, recent windows, longest turn.
   let youVoicedS = 0, themVoicedS = 0;
   let youVoiceTimes = [], themVoiceTimes = [];
@@ -230,6 +240,11 @@
     el.querySelector('.pm-up').addEventListener('click', () => rateNudge(true));
     el.querySelector('.pm-down').addEventListener('click', () => rateNudge(false));
     el.querySelectorAll('.pm-help-btn').forEach((btn) => btn.addEventListener('click', () => askHelp(btn.dataset.help, btn)));
+    el.dataset.assist = assistOn ? 'on' : 'off';
+    el.querySelector('.pm-assist-btn')?.setAttribute('aria-pressed', String(assistOn));
+    el.querySelector('.pm-assist-btn')?.addEventListener('click', () => toggleAssist(!assistOn));
+    el.querySelectorAll('.pm-assist-tab').forEach((tab) => tab.addEventListener('click', () => setAssistTab(tab.dataset.tab)));
+    el.querySelector('.pm-assist-clear')?.addEventListener('click', () => { assistCards = []; renderAssist(); });
     el.addEventListener('pointerenter', markActivity);
     try { if (localStorage.getItem(SIZE_KEY) === 'compact') el.dataset.size = 'compact'; } catch (_) { /* ignore */ }
     syncSizeButton(el);
@@ -410,6 +425,13 @@
     if (!points.length) return;
     markActivity();
     setHelpBusy(null);
+    if (assistOn && bubble) {
+      // The answers panel holds what you READ, so the coach bar keeps showing the coach.
+      pushAssistCard({
+        kind: msg.cardKind || msg.helpKind || 'answer', label: label.replace(/^\S+\s/, ''),
+        question: msg.question || '', lines: points, ts: msg.ts,
+      });
+    }
     // Page: keep every hint in the nudges column.
     nudgesEl.querySelector('.mt-empty')?.remove();
     const card = document.createElement('div');
@@ -419,7 +441,7 @@
       <div class="mt-nudge-desc">${esc(msg.question || '')}</div>
       <ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`;
     nudgesEl.prepend(card);
-    if (!bubble) return;
+    if (!bubble || assistOn) return;
     const box = b('.pm-hint');
     box.classList.toggle('is-help', !!msg.isHelp);
     box.classList.remove('is-objection');
@@ -441,11 +463,29 @@
   }
 
   function askHelp(kind, btn) {
+    if (kind === 'earlier') {                     // no server round trip: just show what the client asked
+      markActivity();
+      if (!assistOn) toggleAssist(true);
+      setAssistTab('questions');
+      return;
+    }
     if (!active || !ws || ws.readyState !== WebSocket.OPEN) return;
     markActivity();
     setHelpBusy(kind);
     ws.send(JSON.stringify({ type: 'help', kind }));
+    if (assistOn) setAssistTab('answers');
     setTimeout(() => setHelpBusy(null), 9000);   // re-enable even if no reply arrives
+  }
+
+  /** "Answer this" on an earlier client question (the Questions tab). */
+  function answerEarlier(index, btn) {
+    if (!active || !ws || ws.readyState !== WebSocket.OPEN) return;
+    markActivity();
+    answeredQuestions.add(index);
+    if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+    ws.send(JSON.stringify({ type: 'help', kind: 'answer', question_index: index }));
+    setAssistTab('answers');
+    setTimeout(renderAssist, 9000);              // re-enable the button if no reply arrives
   }
 
   const MOOD_LABELS = {
@@ -513,7 +553,9 @@
     if (!('documentPictureInPicture' in window)) return false;
     try {
       const compact = bubble?.dataset.size === 'compact';
-      pipWindow = await window.documentPictureInPicture.requestWindow({ width: PIP_WIDTH, height: compact ? 62 : 300 });
+      pipWindow = await window.documentPictureInPicture.requestWindow({
+        width: PIP_WIDTH + (assistOn && !compact ? ASSIST_WIDTH : 0), height: compact ? 62 : 320,
+      });
     } catch (err) {
       console.warn('PiP window refused', err);
       pipWindow = null;
@@ -550,11 +592,19 @@
     document.body.appendChild(bubble);
     let pos = null;
     try { pos = JSON.parse(localStorage.getItem(BUBBLE_POS_KEY) || 'null'); } catch (_) { /* ignore */ }
-    const maxX = window.innerWidth - 390, maxY = window.innerHeight - 60;
-    const centre = Math.round((window.innerWidth - 380) / 2);   // notch: top centre by default
+    const width = 390 + (assistOn ? ASSIST_WIDTH : 0);
+    const maxX = window.innerWidth - width, maxY = window.innerHeight - 60;
+    const centre = Math.round((window.innerWidth - width) / 2);   // notch: top centre by default
     bubble.style.left = `${Math.max(8, Math.min(maxX, pos?.x ?? centre))}px`;
     bubble.style.top = `${Math.max(8, Math.min(maxY, pos?.y ?? 12))}px`;
     enableDrag(bubble);
+  }
+
+  /** Keep the floating notch + panel inside the page after the panel opens. */
+  function keepFloatingOnScreen() {
+    if (!bubble) return;
+    const overflow = bubble.offsetLeft + bubble.offsetWidth - window.innerWidth + 8;
+    if (overflow > 0) bubble.style.left = `${Math.max(8, bubble.offsetLeft - overflow)}px`;
   }
 
   function enableDrag(el) {
@@ -795,7 +845,7 @@
         showHint(msg);
         break;
       case 'help_reply':
-        showHint({ points: msg.lines, isHelp: true }, msg.kind === 'ask' ? '? Question to ask' : msg.kind === 'catchup' ? '↺ Catch me up' : '💡 Help me answer');
+        showHint({ points: msg.lines, isHelp: true, helpKind: msg.kind }, msg.kind === 'ask' ? '? Question to ask' : msg.kind === 'catchup' ? '↺ Catch me up' : '💡 Help me answer');
         break;
       case 'client_mood':
         showMood(msg);
@@ -817,6 +867,10 @@
         break;
       case 'facts':
         renderFacts(msg.items);
+        break;
+      case 'client_questions':
+        clientQuestions = Array.isArray(msg.items) ? msg.items : [];
+        renderAssist();
         break;
       case 'advice':
         showAdvice(msg);
@@ -875,6 +929,77 @@
     fitPipWindow();
   }
 
+  /* ── Answers panel (beside the coach bar) ─────────── */
+  const ASSIST_LABELS = {
+    answer: '💡 Answer', catchup: '↺ Catch up', ask: '? Question to ask', objection: '🛡 Objection', lastcall: '↺ Last call',
+  };
+
+  function pushAssistCard(card) {
+    assistCards.forEach((c) => { c.isNew = false; });
+    assistCards.unshift({ ...card, ts: card.ts ?? elapsed(), isNew: true });
+    assistCards = assistCards.slice(0, ASSIST_MAX_CARDS);
+    setAssistTab('answers');
+    const body = b('.pm-assist-body');
+    if (body) body.scrollTop = 0;
+  }
+
+  function setAssistTab(tab) {
+    assistTab = tab === 'questions' ? 'questions' : 'answers';
+    renderAssist();
+  }
+
+  function renderAssist() {
+    if (!bubble) return;
+    const answers = b('.pm-assist-list[data-view="answers"]');
+    const questions = b('.pm-assist-list[data-view="questions"]');
+    if (!answers || !questions) return;
+    bubble.querySelectorAll('.pm-assist-tab').forEach((t) => {
+      const on = t.dataset.tab === assistTab;
+      t.classList.toggle('is-on', on);
+      t.setAttribute('aria-selected', String(on));
+    });
+    answers.classList.toggle('hidden', assistTab !== 'answers');
+    questions.classList.toggle('hidden', assistTab !== 'questions');
+    b('.pm-qcount').textContent = String(clientQuestions.length);
+
+    answers.dataset.empty = 'Tap Answer, Catch up or Ask in the bar. The result appears here and stays until you clear it.';
+    answers.innerHTML = assistCards.map((c) => `
+      <div class="pm-ac kind-${esc(c.kind)}${c.isNew ? ' is-new' : ''}">
+        <div class="pm-ac-head"><span class="pm-ac-label">${esc(c.kind === 'objection' ? `🛡 ${c.label}` : (ASSIST_LABELS[c.kind] || c.label))}</span>
+          <span class="pm-ac-time">${fmt(c.ts)}</span></div>
+        ${c.question ? `<div class="pm-ac-q">“${esc(c.question)}”</div>` : ''}
+        <${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'} class="pm-ac-lines${c.kind === 'catchup' || c.kind === 'ask' ? ' plain' : ''}">
+          ${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}
+        </${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'}>
+      </div>`).join('');
+
+    questions.dataset.empty = "Questions the client asks are listed here, so you can answer an earlier one. (Needs the client's audio shared.)";
+    questions.innerHTML = clientQuestions.map((q, i) => ({ q, i })).reverse().map(({ q, i }) => `
+      <div class="pm-q${answeredQuestions.has(i) ? ' is-answered' : ''}">
+        <span class="pm-q-time">${fmt(q.ts)}</span>
+        <span class="pm-q-text">${esc(q.text)}</span>
+        <button type="button" class="pm-q-go" data-i="${i}">${answeredQuestions.has(i) ? 'Answer again' : 'Answer this'}</button>
+      </div>`).join('');
+    questions.querySelectorAll('.pm-q-go').forEach((btn) => btn.addEventListener('click', () => answerEarlier(Number(btn.dataset.i), btn)));
+    fitPipWindow();
+  }
+
+  /** Show / hide the panel. In the floating window this resizes it (allowed inside a click). */
+  function toggleAssist(on) {
+    assistOn = !!on;
+    try { localStorage.setItem(ASSIST_KEY, assistOn ? 'on' : 'off'); } catch (_) { /* ignore */ }
+    if (!bubble) return;
+    bubble.dataset.assist = assistOn ? 'on' : 'off';
+    b('.pm-assist-btn')?.setAttribute('aria-pressed', String(assistOn));
+    if (pipWindow) {
+      try { pipWindow.resizeBy(assistOn ? ASSIST_WIDTH : -ASSIST_WIDTH, 0); } catch (_) { /* some browsers only allow user resizing */ }
+    } else if (bubble.classList.contains('floating')) {
+      keepFloatingOnScreen();
+    }
+    if (assistOn) renderAssist();
+    fitPipWindow();
+  }
+
   /* ── Live advice: next move, missed question, praise, objections ── */
   const ADVICE_STYLE = {
     next: { level: 'nudge', label: 'Next move', icon: '➜' },
@@ -910,6 +1035,10 @@
     ].slice(0, 4);
     adviceCard('type-objection', `Objection · ${label}`,
       `<div class="mt-nudge-desc">“${esc(msg.quote || msg.concern || '')}”</div><ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`, msg.ts);
+    if (assistOn && bubble) {
+      pushAssistCard({ kind: 'objection', label: `Objection · ${label}`, question: msg.quote || msg.concern || '', lines: points, ts: msg.ts });
+      return;
+    }
     if (!bubble) return;
     const box = b('.pm-hint');
     box.classList.remove('is-help');
@@ -967,7 +1096,7 @@
       ...(call.open_questions || []).slice(0, 2).map((t) => `Still open: ${t}`),
       ...(call.objections || []).slice(0, 1).map((t) => `Their concern: ${t}`),
     ].slice(0, 3);
-    if (points.length) showHint({ points, question: call.summary ? call.summary.split(/(?<=\.)\s/)[0] : '' }, `↺ Last call · ${callDate(call.created_at)}`);
+    if (points.length) showHint({ points, cardKind: 'lastcall', question: call.summary ? call.summary.split(/(?<=\.)\s/)[0] : '' }, `↺ Last call · ${callDate(call.created_at)}`);
   }
 
   async function loadClients() {

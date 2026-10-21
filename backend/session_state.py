@@ -254,6 +254,9 @@ class SessionState:
     rewrites: list[dict] = field(default_factory=list)
     # Setup chatter removed from the start/end of the presenter's transcript [{ts, text}]
     ignored_chatter: list[dict] = field(default_factory=list)
+    # Meeting: every question the other side asked [{ts, text}], so the presenter can get an answer
+    # for an earlier one from the "Questions" list in the answers panel.
+    client_questions: list[dict] = field(default_factory=list)
     # Meeting: concrete facts said in the call [{ts, kind, text, who}] (names, numbers, dates, needs, tools)
     facts: list[dict] = field(default_factory=list)
     # Practice: named pitch being rehearsed, its key points, and the result {name, version, points}

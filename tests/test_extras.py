@@ -493,3 +493,52 @@ def test_both_objections_get_a_card(monkeypatch):
 
     asyncio.run(run())
     assert [cx.objection_class(c) for c in calls] == ["price", "competitor"]
+
+
+def test_client_questions_are_logged_for_the_answers_panel():
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-cq", session_kind="meeting")
+    cb = m._stt_callback(s, "other")
+    cb("How long does setup take for forty clinics?")
+    cb("How long does setup take for forty clinics?")                      # exact repeat is not logged twice
+    cb("That sounds good to me, thanks.")                                  # not a question
+    cb("What happens to our data if we stop using it?")
+    assert [q["text"] for q in s.client_questions] == [
+        "How long does setup take for forty clinics?", "What happens to our data if we stop using it?"]
+    msgs = [x for x in _drain(s) if x.get("type") == "client_questions"]
+    assert msgs and [q["text"] for q in msgs[-1]["items"]][-1].startswith("What happens")
+    for i in range(60):
+        m._log_client_question(s, f"Question number {i} about pricing and setup?")
+    assert len(s.client_questions) == m.MAX_CLIENT_QUESTIONS and s.client_questions[-1]["text"].startswith("Question number 59")
+
+
+def test_help_answer_can_target_an_earlier_question(monkeypatch):
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-earlier", session_kind="meeting")
+    s.add_transcript("other", "How long does setup take for forty clinics?")
+    m._log_client_question(s, "How long does setup take for forty clinics?")
+    m._log_client_question(s, "What happens to our data if we stop using it?")
+    s.transcript[-1]["te"] -= 10                                           # the second question comes later: its own line
+    s.add_transcript("other", "What happens to our data if we stop using it?")
+    asked = []
+    monkeypatch.setattr(m, "_request_answer_hint", lambda state, q: asked.append(q))
+    m._request_help(s, "answer", 0)                                         # an earlier question, picked from the list
+    s._help_last = {}
+    m._request_help(s, "answer")                                            # no index: the latest question, as before
+    s._help_last = {}
+    m._request_help(s, "answer", 99)                                        # bad index: falls back to the latest
+    s._help_last = {}
+    m._request_help(s, "answer", "0")                                       # a string is not an index
+    assert asked == ["How long does setup take for forty clinics?"] + ["What happens to our data if we stop using it?"] * 3
+
+
+def test_catchup_prompt_covers_questions_and_waiting_items():
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-catch", session_kind="meeting")
+    s.add_transcript("other", "How long does setup take?")
+    prompt = m._help_prompt(s, "catchup")
+    assert "at most 4 short lines" in prompt and "what Them asked or worried about" in prompt
+    assert len(m._parse_help_reply("catchup", "a\nb\nc\nd\ne")) == 4

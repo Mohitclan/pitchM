@@ -453,3 +453,21 @@ Simple built-in accounts, no outside service (`backend/auth.py`, `frontend/login
 - **Decision (owner, 2026-10-22): sign-up stays open in production too** — no company-email rule; leave
   `ALLOWED_EMAIL_DOMAINS` unset. Docs corrected (`docs/ORG_ROLLOUT.md`). Open sign-up means anyone who can reach
   the server can run sessions on the owner's Claude/Gemini credits — watch usage or keep it on a private network.
+
+## Meeting Mode: separate Answers box beside the coach bar — 2026-10-22
+
+Everything you READ now opens in its own glass-style panel next to the coach bar, so the coach's tips and your
+answers no longer fight for one box (`frontend/meeting.html` template, `bubble.css`, `meeting.js`).
+- **Answers panel** (right of the bar; in the Picture-in-Picture window the window is opened wider): holds the
+  results of **Answer**, **Catch up** (now up to 4 lines covering the last ~4 min, incl. what the client asked and
+  is waiting for) and **Ask**, objection cards, last-call notes and auto answer outlines. Newest first, big
+  readable text, stays until cleared (⌫) — no 25 s auto-close. The coach bar keeps only coach tips and status.
+- **Earlier** button + **Questions** tab: every question the client asked (server `client_questions` message,
+  `_log_client_question`, max 40) with **Answer this** → `{type:"help", kind:"answer", question_index}` →
+  `_request_help(state, kind, question_index)` answers that earlier question.
+- **▤ toggle** hides/shows the panel (remembered in localStorage `pitchmirror_assist_panel`); hidden = the old
+  single-box behaviour. Idle dimming now affects only the coach bar, never the answers.
+- Limit: a Picture-in-Picture window is an opaque OS window, so "transparent" is a glass look on the dark frame
+  (real see-through only in the on-page floating mode); Chrome allows resizing the PiP window only inside a click,
+  hence the panel is open from the start and the ▤ button resizes it.
+- `tests/conftest.py` pins tests to AUTH_MODE=off so a developer's `.env` can't change results. 106 tests passing.
