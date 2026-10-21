@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261022a" />
+  <link rel="stylesheet" href="/static/style.css?v=20261022d" />
   <link rel="stylesheet" href="/static/tester.css?v=20261022a" />
 </head>
 <body>
@@ -22,6 +22,7 @@
       <div id="session-timer" class="session-timer hidden">00:00</div>
       <div class="header-right">
         <span id="tester-slot"></span>
+        <a href="/prepare" class="header-meeting-link">Prepare me</a>
         <a href="/meeting" class="header-meeting-link">Meeting Mode</a>
         <button id="btn-history" type="button" class="header-history-btn">History</button>
         <div id="status-badge" class="status-badge idle">Idle</div>
@@ -149,6 +150,16 @@
           </label>
 
           <label class="config-field">
+            <span class="config-label">Script <em>(follows your voice — <a href="/prepare" target="_blank" rel="noopener">make one</a>)</em></span>
+            <select id="script-select" class="config-select"><option value="">No script</option></select>
+          </label>
+
+          <label class="config-toggle" id="use-library-field">
+            <input id="use-library" type="checkbox" />
+            <span>Answer from my documents <em id="library-count"></em></span>
+          </label>
+
+          <label class="config-field">
             <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
             <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
               autocomplete="off" placeholder="Billing Hub pitch" />
@@ -265,6 +276,12 @@
                 <div class="lc-title">Key points <span id="lc-points-count" class="lc-count"></span></div>
                 <ul id="lc-points-list" class="lc-points-list"></ul>
               </div>
+              <div id="lc-script" class="lc-script hidden">
+                <div class="lc-title">Script <span id="lc-script-pct" class="lc-count"></span>
+                  <button id="btn-lost" type="button" class="lc-lost-btn">🧭 I'm lost</button></div>
+                <div id="lc-lost-card" class="lc-lost-card hidden" role="status"></div>
+                <div id="lc-script-body" class="lc-script-body"></div>
+              </div>
               <button id="btn-say-better" type="button" class="lc-better-btn" title="Rewrite the last thing you said">✨ Say it better</button>
               <div id="lc-better" class="lc-better hidden"></div>
             </div>
@@ -372,6 +389,7 @@
   <script src="/static/audio-leveler.js?v=20261022a"></script>
   <script src="/static/gaze.js?v=20261022a"></script>
   <script src="/static/rehearse.js?v=20261022a"></script>
-  <script src="/static/app.js?v=20261022a"></script>
+  <script src="/static/script-view.js?v=20261022d"></script>
+  <script src="/static/app.js?v=20261022d"></script>
 </body>
 </html>

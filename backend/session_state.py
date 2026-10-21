@@ -263,6 +263,16 @@ class SessionState:
     pitch_name: str = ""
     pitch_points: list[str] = field(default_factory=list)
     pitch: dict = field(default_factory=dict)
+    # Script follow-along (see script_follow.py), the person's own documents (library.py) and the results
+    script_id: str = ""
+    script_name: str = ""
+    script_target_minutes: int = 0
+    script_follower: object = None       # ScriptFollower | None
+    script_lost_pending: bool = False
+    library: object = None               # Library | None
+    hint_sources: dict = field(default_factory=dict)   # question -> {"sources": [...], "not_in_notes": bool}
+    script_result: dict = field(default_factory=dict)
+    readiness: dict = field(default_factory=dict)
     # Practice: "" (coach only) or the role the live voice plays: investor | interviewer | client
     roleplay_role: str = ""
     roleplay_started: bool = False

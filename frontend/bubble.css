@@ -288,3 +288,28 @@
 
 .pm-assist-btn[aria-pressed="false"] { opacity: 0.55; }
 @keyframes pm-new { 0%, 70% { box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.2); } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* Script tab: the script follows your voice; the next line is highlighted, spoken lines fade. */
+.pm-script-bar { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 1; padding-bottom: 6px; background: transparent; }
+.pm-lost-btn {
+  font: inherit; font-size: 13px; font-weight: 800; color: #1a1305; cursor: pointer; border: 0; border-radius: 999px;
+  padding: 6px 14px; background: #fbbf24;
+}
+.pm-lost-btn:hover { background: #fcd34d; }
+.pm-lost-btn:disabled { opacity: 0.6; cursor: progress; }
+.pm-script-pct { margin-left: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: var(--pm-ink-3); }
+.pm-lost-card { background: rgba(251, 191, 36, 0.14); border: 1px solid rgba(251, 191, 36, 0.45); border-radius: 12px; padding: 9px 12px; font-size: 14px; line-height: 1.45; }
+.pm-lost-card b { display: block; font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase; color: #fbbf24; margin-bottom: 3px; }
+.pm-lost-card .next { font-size: 16px; font-weight: 700; }
+.pm-lost-card.hidden { display: none; }
+.pm-script-body { display: flex; flex-direction: column; gap: 8px; }
+.sv-sec { background: var(--pm-raised); border-radius: 12px; padding: 8px 10px; }
+.sv-sec.is-skipped { outline: 1px dashed rgba(248, 113, 113, 0.6); }
+.sv-title { font-size: 11px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; color: var(--pm-hint); margin-bottom: 4px; }
+.sv-title em { font-style: normal; color: #f87171; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.sv-lines { margin: 0; padding-left: 0; list-style: none; counter-reset: sv; }
+.sv-line { padding: 4px 6px; border-radius: 8px; font-size: 14.5px; line-height: 1.45; color: var(--pm-ink-2); }
+.sv-line.is-done { color: var(--pm-ink-3); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.2); }
+.sv-line.is-next { color: var(--pm-ink); font-weight: 700; font-size: 16px; background: rgba(147, 197, 253, 0.16); box-shadow: inset 3px 0 0 #93c5fd; }
+.pm-ac-src { margin-top: 6px; font-size: 11.5px; color: var(--pm-ink-3); }
+.pm-ac-src.warn { color: #fbbf24; }

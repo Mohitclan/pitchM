@@ -471,3 +471,30 @@ answers no longer fight for one box (`frontend/meeting.html` template, `bubble.c
   (real see-through only in the on-page floating mode); Chrome allows resizing the PiP window only inside a click,
   hence the panel is open from the start and the ▤ button resizes it.
 - `tests/conftest.py` pins tests to AUTH_MODE=off so a developer's `.env` can't change results. 106 tests passing.
+
+## Sales / client calls first: Prepare me, script follow-along, own documents, readiness — 2026-10-22
+
+First slice of `docs/PRODUCT_PLAN.md` (A + B + C + F), built for sales and client calls.
+- **Prepare me** (`/prepare`, `frontend/prepare.html|js|css`, `backend/prepare.py`, `POST /api/prepare`): paste
+  material (and optionally use saved documents) → Claude Opus (Gemini fallback) drafts a script (Opening, Their
+  situation, What we do, Proof, Price and fit, Next step), key points, hard questions with answers, objection
+  replies, cheat sheet and a "missing facts" list. Strictly grounded: gaps become `[add: …]`. Editable, saved per
+  user (`backend/userdata.py`, tables `scripts` and `docs` in the same SQLite file; every query filters by user id).
+  Endpoints: `/api/scripts` (CRUD), `/api/library` (list, upload .pdf/.txt/.md ≤5 MB or JSON text, delete).
+- **Script that follows your voice** (`backend/script_follow.py`): meeting setup and practice have a **Script**
+  picker (it also fills empty key points / objections / length). WS `script` {script_id, use_library}; the user's
+  transcript feeds `ScriptFollower` (weighted containment match, paraphrase-safe, tail carry-over) → `script_pos`.
+  Meeting: a **Script** tab in the Answers panel; practice: a block in the live coach panel. Next line is
+  highlighted, spoken lines fade, skipped sections are flagged. Click a line = `script_goto`.
+- **I'm lost** button → `script_lost` → `script_where` {here, next[2], section}: matcher on the last 60 words,
+  Haiku fallback ("LINE: n") when unsure.
+- **Answers from my own documents** (`backend/library.py`, keyword/IDF passage search, no embeddings): live answer
+  outlines and objection cards include matching passages and cite them ("From your notes: Pricing sheet");
+  when nothing matches, the prompt forbids inventing figures and the card says "Not in your notes — offer to
+  confirm". Toggle "Answer from my documents" in setup.
+- **Readiness check** (`backend/readiness.py`, plain rules): after a run against a script the scorecard gets
+  `script_result` (coverage per section, skipped) and `readiness` (Ready / Almost / Not yet, checks, top-2 fixes):
+  opening, script coverage ≥80%, key points ≥75%, length within ±40% of target, fillers+repeats ≤4/min, pace 105–175 wpm.
+- Tests: `tests/test_scripts_library.py` (10). 116 passing. Real-server check on a temporary port: WS
+  `script` → `script_loaded`, `script_goto` → `script_pos`, `script_lost` → `script_where`; pages render; picking a
+  script fills the brief. Not yet tested with a live voice or a real Opus draft (costs credits).

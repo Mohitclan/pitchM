@@ -83,6 +83,11 @@ from backend import claude_client
 from backend import meeting_brief
 from backend import coach_extras
 from backend import auth as accounts
+from backend import library as doc_library
+from backend import script_follow
+from backend import prepare as prepare_mod
+from backend import readiness as readiness_mod
+from backend.userdata import get_userdata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -781,6 +786,220 @@ async def app_page():
 @app.get("/meeting")
 async def meeting_page():
     return FileResponse("frontend/meeting.html", headers=_NO_CACHE)
+
+
+# ── Scripts, own documents and the readiness check ────────────────
+
+def _load_script(state: SessionState, payload: dict) -> None:
+    """The browser picked a saved script and/or turned on "use my documents"."""
+    store = get_userdata()
+    script = store.get_script(state.user_id, str(payload.get("script_id") or "")) if payload.get("script_id") else None
+    if script:
+        sections = script_follow.parse_script_text(script["text"])
+        state.script_follower = script_follow.ScriptFollower(sections) or None
+        state.script_id, state.script_name = script["script_id"], script["name"]
+        state.script_target_minutes = int(script.get("minutes") or 0)
+        state.record_timeline("script", f"Script: {script['name']} ({len(state.script_follower.lines) if state.script_follower else 0} lines)")
+    if payload.get("use_library"):
+        lib = doc_library.Library(store.get_docs(state.user_id))
+        state.library = lib if lib else None
+    state._enqueue({"type": "script_loaded", "ok": bool(script), "library": bool(state.library),
+                    "sections": script["sections"] if script else None,
+                    "status": state.script_follower.status() if state.script_follower else None})
+
+
+def _script_feed(state: SessionState, text: str) -> None:
+    follower = state.script_follower
+    if follower and follower.feed(text):
+        state._enqueue({"type": "script_pos", "status": follower.status()})
+
+
+def _script_goto(state: SessionState, index) -> None:
+    follower = state.script_follower
+    if not follower or not isinstance(index, int):
+        return
+    follower.goto(index)
+    state._enqueue({"type": "script_pos", "status": follower.status()})
+
+
+async def _script_lost(state: SessionState) -> None:
+    """"I'm lost": work out where the presenter is from their last words and say which line comes next."""
+    follower = state.script_follower
+    if not follower or state.script_lost_pending:
+        return
+    state.script_lost_pending = True
+    try:
+        user_tail = " ".join(seg["t"] for seg in state.transcript if seg.get("s") == "u")
+        words = user_tail.split()[-60:]
+        recent = " ".join(words)
+        idx, conf = follower.locate(recent) if recent else (-1, 0.0)
+        if conf >= 0.45:
+            follower.set_position(idx)
+        elif recent and claude_client.claude_enabled():
+            numbered = "\n".join(f"{ln['idx']}: {ln['text']}" for ln in follower.lines)
+            try:
+                reply = await claude_client.fast_text(
+                    f"A presenter is following this script:\n{numbered}\n\nTheir last words were: \"{recent}\"\n"
+                    "Which script line did they most recently say, even in other words? "
+                    "Reply with exactly: LINE: <number>   (or LINE: none if it matches nothing)", max_tokens=12)
+                m = re.search(r"LINE\s*:\s*(\d+)", reply or "", re.IGNORECASE)
+                if m and int(m.group(1)) < len(follower.lines):
+                    follower.set_position(int(m.group(1)))
+            except Exception as exc:
+                logger.warning("script_lost lookup failed (%s)", str(exc)[:100])
+        where = follower.where_you_are()
+        state.record_timeline("script_lost", f"I'm lost → next: {(where['next'] or [''])[0]}"[:200])
+        state._enqueue({"type": "script_where", **where, "status": follower.status()})
+    finally:
+        state.script_lost_pending = False
+
+
+def _ground_in_library(state: SessionState, question: str, *, store_key="q") -> str:
+    """Prompt text with the presenter's own documents that match the question (and a "don't invent" rule)."""
+    if not state.library:
+        return ""
+    hits = state.library.search(question)
+    if store_key:
+        state.hint_sources[question] = ({"sources": doc_library.source_titles(hits)} if hits
+                                        else {"not_in_notes": True})
+    if hits:
+        return "\n\n" + doc_library.facts_block(hits) + "\nUse these facts; never state a figure that is not in them."
+    return ("\n\nThe presenter's documents contain nothing about this. Do NOT state any number, price or customer name; "
+            "make one of the points \"confirm the exact figure, then follow up\".")
+
+
+def _compute_script_result(state: SessionState) -> None:
+    """After a run against a script: coverage per section and the Ready / Almost / Not yet check."""
+    follower = state.script_follower
+    if not follower:
+        return
+    status = follower.status()
+    sections = follower.section_coverage()
+    skipped = [follower.sections[i]["title"] for i in status["skipped"]]
+    state.script_result = {"script_id": state.script_id, "name": state.script_name, "sections": sections,
+                           "skipped": skipped, "pct": status["pct"], "total": status["total"]}
+    duration = state.duration_seconds()
+    minutes = max(duration / 60, 0.1)
+    words = state.user_word_count()
+    points = (state.pitch or {}).get("points") or state.brief_points or []
+    state.readiness = readiness_mod.readiness_check(
+        sections=sections, skipped=skipped, coverage_pct=status["pct"],
+        key_points_hit=sum(1 for r in points if r.get("covered")), key_points_total=len(points),
+        duration_s=duration, target_minutes=state.script_target_minutes or state.planned_minutes,
+        clutter_per_min=round(state.scored_filler_count() / minutes, 1) if words >= 25 else None,
+        wpm=round(words / minutes) if words >= 25 else None, roleplay=bool(state.roleplay_role),
+    )
+    logger.info("readiness session=%s verdict=%s pct=%s", state.session_id, state.readiness["verdict"], status["pct"])
+
+
+@app.get("/prepare")
+async def prepare_page():
+    return FileResponse("frontend/prepare.html", headers=_NO_CACHE)
+
+
+@app.get("/api/scripts")
+async def api_list_scripts(request: Request):
+    return {"scripts": get_userdata().list_scripts(_request_user_scope(request))}
+
+
+@app.get("/api/scripts/{script_id}")
+async def api_get_script(script_id: str, request: Request):
+    script = get_userdata().get_script(_request_user_scope(request), script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return script
+
+
+@app.post("/api/scripts")
+async def api_create_script(request: Request):
+    user_id = _request_user_scope(request)
+    try:
+        return get_userdata().save_script(user_id, await request.json())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/scripts/{script_id}")
+async def api_update_script(script_id: str, request: Request):
+    user_id = _request_user_scope(request)
+    try:
+        return get_userdata().save_script(user_id, await request.json(), script_id=script_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Script not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/scripts/{script_id}")
+async def api_delete_script(script_id: str, request: Request):
+    if not get_userdata().delete_script(_request_user_scope(request), script_id):
+        raise HTTPException(status_code=404, detail="Script not found")
+    return {"ok": True}
+
+
+@app.get("/api/library")
+async def api_list_docs(request: Request):
+    return {"docs": get_userdata().list_docs(_request_user_scope(request))}
+
+
+@app.post("/api/library")
+async def api_add_doc(request: Request, file: UploadFile | None = File(None)):
+    """Add a document: multipart upload (.pdf/.txt/.md) or JSON {title, text}."""
+    user_id = _request_user_scope(request)
+    try:
+        if file is not None:
+            data = await file.read(5_000_001)
+            if len(data) > 5_000_000:
+                raise ValueError("That file is over 5 MB.")
+            name = (file.filename or "document").strip()
+            text = doc_library.extract_text(name, data)
+            title = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name)
+        else:
+            body = await request.json()
+            title, text = str(body.get("title") or ""), str(body.get("text") or "")
+        return get_userdata().add_doc(user_id, title, text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/library/{doc_id}")
+async def api_delete_doc(doc_id: str, request: Request):
+    if not get_userdata().delete_doc(_request_user_scope(request), doc_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"ok": True}
+
+
+@app.post("/api/prepare")
+async def api_prepare(request: Request):
+    """Prepare me: material (+ optionally the user's saved documents) → script, key points, answers, cheat sheet."""
+    user_id = _request_user_scope(request)
+    body = await request.json()
+    material = str(body.get("material") or "").strip()
+    if body.get("use_library"):
+        docs = get_userdata().get_docs(user_id)
+        material += "".join(f"\n\n[{d['title']}]\n{d['text']}" for d in docs)
+    if len(material) < 80:
+        raise HTTPException(status_code=400, detail="Paste a bit more material (a product page, FAQ or notes), at least a few sentences.")
+    try:
+        minutes = max(0, min(240, int(body.get("minutes") or 0)))
+    except (TypeError, ValueError):
+        minutes = 0
+    prompt = prepare_mod.build_prompt(material, client=str(body.get("client") or "")[:80], goal=str(body.get("goal") or "")[:200],
+                                      minutes=minutes, language=str(body.get("language") or "English")[:30])
+    raw = ""
+    try:
+        raw = await claude_client.report_text(prepare_mod.SYSTEM, prompt, max_tokens=6000) if claude_client.claude_enabled() else ""
+    except Exception as exc:
+        logger.warning("prepare on Claude failed (%s) - trying Gemini", str(exc)[:120])
+    prepared = prepare_mod.parse_prepared(raw)
+    if not prepared:
+        raw = await _quick_text(prepare_mod.SYSTEM + "\n\n" + prompt, max_tokens=4000, timeout=60.0)
+        prepared = prepare_mod.parse_prepared(raw)
+    if not prepared:
+        raise HTTPException(status_code=502, detail="Couldn't draft the script right now. Try again in a moment.")
+    prepared["minutes"] = minutes
+    prepared["client"] = str(body.get("client") or "")[:80]
+    return prepared
 
 
 @app.get("/health")
@@ -1545,6 +1764,7 @@ async def websocket_endpoint(websocket: WebSocket):
         })
 
     # ── Persist and return final scorecard ────────────────────────
+    _compute_script_result(state)
     scorecard = build_scorecard(state)
     await _db.save_session(session_id, scorecard)
     await _safe_send(websocket, {"type": "scorecard", "data": scorecard})
@@ -1566,6 +1786,8 @@ def _stt_callback(state: SessionState, speaker: str):
         state.add_transcript(speaker, text)
         state._enqueue({"type": "transcript", "speaker": speaker, "text": text})
         state._enqueue({"type": "transcript_end", "speaker": speaker})
+        if speaker == "user":
+            _script_feed(state, text)
         if speaker == "other" and state.session_kind == "meeting" and looks_like_question(text):
             _log_client_question(state, text)
             _request_answer_hint(state, text)
@@ -1617,7 +1839,8 @@ _hint_client: genai.Client | None = None
 
 
 def _deliver_answer_hint(state: SessionState, question: str, points: list[str]) -> None:
-    hint = {"question": question, "points": points, "ts": round(state.duration_seconds(), 1)}
+    hint = {"question": question, "points": points, "ts": round(state.duration_seconds(), 1),
+            **state.hint_sources.get(question, {})}
     state.answer_hints.append(hint)
     state._enqueue({"type": "answer_hint", **hint})
     state.record_timeline("answer_hint", f"Hint: {' / '.join(points)}"[:220], {"question": question[:200]})
@@ -1630,6 +1853,7 @@ def _request_answer_hint(state: SessionState, question: str) -> None:
         return
     state.hint_question = question
     prompt = _answer_hint_prompt(state, question)
+    prompt += _ground_in_library(state, question)
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:   # no event loop (unit tests / shutdown)
@@ -2304,13 +2528,17 @@ async def _run_meeting_advice(state: SessionState) -> None:
 
 async def _run_objection_card(state: SessionState, quote: str) -> None:
     """Them pushed back: show the prepared answer (if any) and a 3-step way to respond."""
+    grounding = _ground_in_library(state, quote, store_key=None)
     reply = await _quick_text(coach_extras.objection_prompt(
-        quote, state.conversation_tail(seconds=90, max_chars=1500), state.prepared_answers, _brief_block(state, max_chars=600),
+        quote, state.conversation_tail(seconds=90, max_chars=1500), state.prepared_answers,
+        _brief_block(state, max_chars=600) + grounding,
     ), max_tokens=160)
     card = coach_extras.parse_objection(reply, state.prepared_answers)
     if not card:
         return
-    card = {"ts": round(state.duration_seconds(), 1), "quote": quote[:200], **card}
+    hits = state.library.search(quote) if state.library else []
+    card = {"ts": round(state.duration_seconds(), 1), "quote": quote[:200], **card,
+            **({"sources": doc_library.source_titles(hits)} if hits else {})}
     state.objections.append(card)
     state.record_timeline("objection", f"{card['kind']}: {card['concern']}"[:220])
     state.last_advice_at = time.monotonic()
@@ -2854,6 +3082,15 @@ async def _upstream(
                         break
                     if msg_type == "brief" and state.session_kind == "meeting":
                         _apply_brief(state, payload_json)
+                        continue
+                    if msg_type == "script":
+                        _load_script(state, payload_json)
+                        continue
+                    if msg_type == "script_lost":
+                        asyncio.get_running_loop().create_task(_script_lost(state))
+                        continue
+                    if msg_type == "script_goto":
+                        _script_goto(state, payload_json.get("index"))
                         continue
                     if msg_type == "help" and state.session_kind == "meeting":
                         qi = payload_json.get("question_index")

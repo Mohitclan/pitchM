@@ -199,6 +199,9 @@ const pitchNameInput = document.getElementById('pitch-name');
 const pitchPointsInput = document.getElementById('pitch-points');
 const recordVideoToggle = document.getElementById('record-video-toggle');
 const feedbackModeSelect = document.getElementById('feedback-mode');
+const scriptSelect = document.getElementById('script-select');
+const useLibraryBox = document.getElementById('use-library');
+let _script = null, _scriptStatus = null;
 const PRACTICE_EXTRAS_KEY = 'pitchmirror_practice_extras';
 const ROLEPLAY_LABELS = { investor: 'Investor', interviewer: 'Interviewer', client: 'Client' };
 try {
@@ -601,6 +604,9 @@ async function startSession() {
 
   ws.onopen = () => {
     console.log('WebSocket connected');
+    if (scriptSelect?.value || useLibraryBox?.checked) {
+      ws.send(JSON.stringify({ type: 'script', script_id: scriptSelect?.value || '', use_library: !!useLibraryBox?.checked }));
+    }
     if (sessionCfg.pitchName || sessionCfg.roleplay) {
       ws.send(JSON.stringify({ type: 'pitch', name: sessionCfg.pitchName, points: sessionCfg.pitchPoints }));
     }
@@ -1055,6 +1061,23 @@ function handleServerMessage(event) {
 
     case 'pitch_points':
       renderLivePoints(msg.points);
+      break;
+
+    case 'script_loaded':
+      if (msg.sections) _script = { ...(_script || {}), sections: msg.sections };
+      _scriptStatus = msg.status || null;
+      renderPracticeScript();
+      break;
+
+    case 'script_pos':
+      _scriptStatus = msg.status;
+      document.getElementById('lc-lost-card')?.classList.add('hidden');
+      renderPracticeScript();
+      break;
+
+    case 'script_where':
+      _scriptStatus = msg.status;
+      showPracticeWhere(msg);
       break;
 
     case 'advice':
@@ -2584,6 +2607,94 @@ function renderReviewSection(data, reportBodyHtml, modeLabel) {
     </div>`;
 }
 
+
+/* ── Scripts, my documents, readiness ─────────────── */
+async function loadPracticeScripts() {
+  if (!scriptSelect) return;
+  try {
+    const resp = await fetch('/api/scripts', { headers: authHeaders() });
+    if (resp.ok) {
+      const { scripts } = await resp.json();
+      scriptSelect.innerHTML = '<option value="">No script</option>' +
+        (scripts || []).map((s) => `<option value="${escapeHtml(s.script_id)}">${escapeHtml(s.name)} · ${s.lines} lines</option>`).join('');
+      const last = localStorage.getItem('pitchmirror_last_script');
+      if (last && (scripts || []).some((s) => s.script_id === last)) { scriptSelect.value = last; onPracticeScriptPicked(); }
+    }
+    const lib = await fetch('/api/library', { headers: authHeaders() });
+    if (lib.ok) {
+      const n = ((await lib.json()).docs || []).length;
+      document.getElementById('library-count').textContent = n ? `(${n} document${n === 1 ? '' : 's'})` : '(none yet — add them in Prepare me)';
+      if (!n && useLibraryBox) useLibraryBox.disabled = true;
+    }
+  } catch (_) { /* offline */ }
+}
+
+async function onPracticeScriptPicked() {
+  const id = scriptSelect.value;
+  try { localStorage.setItem('pitchmirror_last_script', id); } catch (_) { /* ignore */ }
+  _script = null; _scriptStatus = null;
+  if (!id) { renderPracticeScript(); return; }
+  try {
+    const resp = await fetch(`/api/scripts/${encodeURIComponent(id)}`, { headers: authHeaders() });
+    if (!resp.ok) return;
+    _script = await resp.json();
+    if (pitchPointsInput && !pitchPointsInput.value.trim()) pitchPointsInput.value = (_script.key_points || []).join('\n');
+    if (pitchNameInput && !pitchNameInput.value.trim()) pitchNameInput.value = _script.name;
+    renderPracticeScript();
+  } catch (_) { /* ignore */ }
+}
+
+function renderPracticeScript() {
+  const box = document.getElementById('lc-script');
+  const body = document.getElementById('lc-script-body');
+  if (!box || !body) return;
+  box.classList.toggle('hidden', !_script);
+  if (!_script) return;
+  body.innerHTML = window.ScriptView.render(_script.sections, _scriptStatus || { next: 0, covered: [], skipped: [] }, { clickable: true });
+  const pct = document.getElementById('lc-script-pct');
+  if (pct) pct.textContent = _scriptStatus ? `${_scriptStatus.pct}%` : '';
+  body.querySelectorAll('.sv-line').forEach((li) => li.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'script_goto', index: Number(li.dataset.idx) }));
+  }));
+  window.ScriptView.scrollToNext(body);
+}
+
+function showPracticeWhere(msg) {
+  const card = document.getElementById('lc-lost-card');
+  if (!card) return;
+  const next = (msg.next || []).length
+    ? `<div class="next">Say next: ${escapeHtml(msg.next[0])}</div>${msg.next[1] ? `<div>Then: ${escapeHtml(msg.next[1])}</div>` : ''}`
+    : '<div class="next">That was the last line.</div>';
+  card.innerHTML = `${msg.here ? `<div>You just said: “${escapeHtml(msg.here)}”</div>` : ''}${next}`;
+  card.classList.remove('hidden');
+  renderPracticeScript();
+}
+
+document.getElementById('btn-lost')?.addEventListener('click', (e) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  e.currentTarget.disabled = true;
+  setTimeout(() => { e.currentTarget.disabled = false; }, 2500);
+  ws.send(JSON.stringify({ type: 'script_lost' }));
+});
+scriptSelect?.addEventListener('change', onPracticeScriptPicked);
+loadPracticeScripts();
+
+function renderReadiness(data) {
+  const r = data.readiness;
+  if (!r || !r.checks) return '';
+  const sec = (data.script_result?.sections || []).map((x) => {
+    const skip = (data.script_result.skipped || []).includes(x.title);
+    return `<span class="${skip ? 'skip' : ''}">${escapeHtml(x.title)} ${x.covered}/${x.total}</span>`;
+  }).join('');
+  return `<div class="ready-card v-${escapeHtml(r.verdict)}">
+    <div class="ready-head"><span class="ready-verdict">${escapeHtml(r.label)}</span>
+      <span class="ready-sub">${r.passed} of ${r.total} checks passed${data.script_result?.name ? ` · ${escapeHtml(data.script_result.name)}` : ''}</span></div>
+    <ul class="ready-checks">${r.checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '✗'} ${escapeHtml(c.label)} — ${escapeHtml(c.detail)}</li>`).join('')}</ul>
+    ${r.fix && r.fix.length ? `<ol class="ready-fix">${r.fix.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ol>` : ''}
+    ${sec ? `<div class="ready-sections">${sec}</div>` : ''}
+  </div>`;
+}
+
 function renderScorecard(data) {
   window._lastScorecardData = data;
   const score = data.overall_score || 0;
@@ -2685,6 +2796,7 @@ function renderScorecard(data) {
     </div>
     ${insufficientHtml}
     ${renderGoalCheck(data)}
+    ${renderReadiness(data)}
     ${renderPitchVersions(data)}
     ${renderRecap(data)}
     <div class="scorecard-categories">${catHtml}</div>

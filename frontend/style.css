@@ -2174,3 +2174,34 @@ input.config-select { font-weight: 500; }
 .advice-card.advice-tip { border-left: 3px solid var(--accent); }
 .advice-card.advice-good { border-left: 3px solid var(--success); }
 .advice-card .advice-text { font-weight: 600; color: var(--text); }
+
+/* Script follow-along (practice) */
+.lc-script { margin-top: 8px; }
+.lc-lost-btn { margin-left: auto; font: inherit; font-size: 12px; font-weight: 800; color: #1a1305; background: #fbbf24; border: 0; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.lc-lost-btn:disabled { opacity: 0.6; cursor: progress; }
+.lc-script .lc-title { display: flex; align-items: center; gap: 8px; }
+.lc-lost-card { margin: 6px 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; line-height: 1.45; background: rgba(251, 191, 36, 0.14); border: 1px solid rgba(251, 191, 36, 0.45); }
+.lc-lost-card .next { font-size: 15px; font-weight: 700; }
+.lc-script-body { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.sv-sec { border: 1px solid var(--border, rgba(255,255,255,0.12)); border-radius: 10px; padding: 6px 8px; }
+.sv-sec.is-skipped { border-style: dashed; border-color: rgba(248, 113, 113, 0.7); }
+.sv-title { font-size: 11px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 3px; }
+.sv-title em { font-style: normal; color: #f87171; margin-left: 6px; text-transform: none; }
+.sv-lines { margin: 0; padding: 0; list-style: none; }
+.sv-line { padding: 3px 6px; border-radius: 6px; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.sv-line.is-done { opacity: 0.5; text-decoration: line-through; }
+.sv-line.is-next { opacity: 1; color: var(--text-primary, inherit); font-weight: 700; font-size: 14.5px; background: rgba(147, 197, 253, 0.16); box-shadow: inset 3px 0 0 #93c5fd; }
+.ready-card { margin: 14px 0; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--border, rgba(255,255,255,0.12)); }
+.ready-card.v-ready { border-color: rgba(56, 217, 169, 0.6); background: rgba(56, 217, 169, 0.08); }
+.ready-card.v-almost { border-color: rgba(255, 208, 77, 0.6); background: rgba(255, 208, 77, 0.07); }
+.ready-card.v-not_yet { border-color: rgba(255, 71, 87, 0.6); background: rgba(255, 71, 87, 0.07); }
+.ready-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ready-verdict { font-size: 22px; font-weight: 800; }
+.ready-sub { font-size: 13px; color: var(--text-secondary); }
+.ready-checks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.ready-checks .bad { color: #ff8a95; }
+.ready-checks .ok { color: var(--success, #38d9a9); }
+.ready-fix { margin: 10px 0 0; padding-left: 20px; font-weight: 600; font-size: 14px; }
+.ready-sections { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.ready-sections span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border, rgba(255,255,255,0.15)); }
+.ready-sections .skip { border-color: #f87171; color: #f87171; }

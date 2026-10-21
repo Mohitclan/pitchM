@@ -256,3 +256,7 @@
 .mt-nudge.advice-good { border-left-color: var(--ok); background: rgba(22, 163, 74, 0.05); }
 .mt-nudge.type-objection { border-left-color: var(--danger); background: rgba(220, 38, 38, 0.04); }
 .mt-field select#mt-chatty { font: inherit; font-size: 14px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+
+.mt-check { flex-direction: row; align-items: center; gap: 10px; }
+.mt-check input { width: auto; margin: 0; }
+.mt-check span { margin: 0; }

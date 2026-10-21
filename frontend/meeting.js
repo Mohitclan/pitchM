@@ -107,6 +107,8 @@
   const otherStatusEl = $('mt-other-status');
   const clientField = $('mt-client');
   const clientsList = $('mt-clients');
+  const scriptSelect = $('mt-script');
+  const useLibraryBox = $('mt-use-library');
   const lastCallEl = $('mt-last-call');
   const commitPanel = $('mt-commit-panel');
   const commitList = $('mt-commit-list');
@@ -158,6 +160,8 @@
   let clientQuestions = [];          // what the client asked: [{ ts, text }]
   let answeredQuestions = new Set(); // indexes the presenter already asked for an answer to
   let assistTab = 'answers';
+  // Script follow-along: the chosen script ({ script_id, name, sections, objections, ... }) and the live position
+  let script = null, scriptStatus = null;
   // Talk time from voice activity (100 ms chunks): totals, recent windows, longest turn.
   let youVoicedS = 0, themVoicedS = 0;
   let youVoiceTimes = [], themVoiceTimes = [];
@@ -245,6 +249,7 @@
     el.querySelector('.pm-assist-btn')?.addEventListener('click', () => toggleAssist(!assistOn));
     el.querySelectorAll('.pm-assist-tab').forEach((tab) => tab.addEventListener('click', () => setAssistTab(tab.dataset.tab)));
     el.querySelector('.pm-assist-clear')?.addEventListener('click', () => { assistCards = []; renderAssist(); });
+    el.querySelector('.pm-lost-btn')?.addEventListener('click', askLost);
     el.addEventListener('pointerenter', markActivity);
     try { if (localStorage.getItem(SIZE_KEY) === 'compact') el.dataset.size = 'compact'; } catch (_) { /* ignore */ }
     syncSizeButton(el);
@@ -377,6 +382,11 @@
     const client = (clientField?.value || '').trim();
     const objections = (briefFields.objections?.value || '').trim();
     plannedMinutes = minutes;
+    const scriptId = scriptSelect?.value || '';
+    const useLibrary = !!useLibraryBox?.checked;
+    if ((scriptId || useLibrary) && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'script', script_id: scriptId, use_library: useLibrary }));
+    }
     if (!notes && !points.length && !client && !objections) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'brief', notes, points, planned_minutes: minutes, client, objections }));
@@ -430,6 +440,7 @@
       pushAssistCard({
         kind: msg.cardKind || msg.helpKind || 'answer', label: label.replace(/^\S+\s/, ''),
         question: msg.question || '', lines: points, ts: msg.ts,
+        sources: msg.sources, notInNotes: !!msg.not_in_notes,
       });
     }
     // Page: keep every hint in the nudges column.
@@ -844,6 +855,20 @@
       case 'answer_hint':
         showHint(msg);
         break;
+      case 'script_loaded':
+        if (msg.sections) script = { ...(script || {}), sections: msg.sections };
+        scriptStatus = msg.status || null;
+        renderAssist();
+        break;
+      case 'script_pos':
+        scriptStatus = msg.status;
+        b('.pm-lost-card')?.classList.add('hidden');
+        if (assistTab === 'script') renderScript();
+        break;
+      case 'script_where':
+        scriptStatus = msg.status;
+        showWhereYouAre(msg);
+        break;
       case 'help_reply':
         showHint({ points: msg.lines, isHelp: true, helpKind: msg.kind }, msg.kind === 'ask' ? '? Question to ask' : msg.kind === 'catchup' ? '↺ Catch me up' : '💡 Help me answer');
         break;
@@ -944,7 +969,7 @@
   }
 
   function setAssistTab(tab) {
-    assistTab = tab === 'questions' ? 'questions' : 'answers';
+    assistTab = ['questions', 'script'].includes(tab) && (tab !== 'script' || script) ? tab : 'answers';
     renderAssist();
   }
 
@@ -960,6 +985,9 @@
     });
     answers.classList.toggle('hidden', assistTab !== 'answers');
     questions.classList.toggle('hidden', assistTab !== 'questions');
+    b('.pm-script-tab')?.classList.toggle('hidden', !script);
+    b('.pm-assist-list[data-view="script"]')?.classList.toggle('hidden', assistTab !== 'script');
+    if (assistTab === 'script') renderScript();
     b('.pm-qcount').textContent = String(clientQuestions.length);
 
     answers.dataset.empty = 'Tap Answer, Catch up or Ask in the bar. The result appears here and stays until you clear it.';
@@ -971,6 +999,8 @@
         <${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'} class="pm-ac-lines${c.kind === 'catchup' || c.kind === 'ask' ? ' plain' : ''}">
           ${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}
         </${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'}>
+        ${c.notInNotes ? '<div class="pm-ac-src warn">Not in your notes — offer to confirm the figure and follow up.</div>'
+          : (c.sources && c.sources.length ? `<div class="pm-ac-src">From your notes: ${esc(c.sources.join(', '))}</div>` : '')}
       </div>`).join('');
 
     questions.dataset.empty = "Questions the client asks are listed here, so you can answer an earlier one. (Needs the client's audio shared.)";
@@ -1036,7 +1066,7 @@
     adviceCard('type-objection', `Objection · ${label}`,
       `<div class="mt-nudge-desc">“${esc(msg.quote || msg.concern || '')}”</div><ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`, msg.ts);
     if (assistOn && bubble) {
-      pushAssistCard({ kind: 'objection', label: `Objection · ${label}`, question: msg.quote || msg.concern || '', lines: points, ts: msg.ts });
+      pushAssistCard({ kind: 'objection', label: `Objection · ${label}`, question: msg.quote || msg.concern || '', lines: points, ts: msg.ts, sources: msg.sources });
       return;
     }
     if (!bubble) return;
@@ -1097,6 +1127,85 @@
       ...(call.objections || []).slice(0, 1).map((t) => `Their concern: ${t}`),
     ].slice(0, 3);
     if (points.length) showHint({ points, cardKind: 'lastcall', question: call.summary ? call.summary.split(/(?<=\.)\s/)[0] : '' }, `↺ Last call · ${callDate(call.created_at)}`);
+  }
+
+
+  /* ── Scripts & my documents ─────────────────────── */
+  async function loadScripts() {
+    if (!scriptSelect) return;
+    try {
+      const resp = await fetch('/api/scripts', { headers: apiHeaders() });
+      if (resp.ok) {
+        const { scripts } = await resp.json();
+        scriptSelect.innerHTML = '<option value="">No script</option>' +
+          (scripts || []).map((s) => `<option value="${esc(s.script_id)}">${esc(s.name)} · ${s.lines} lines</option>`).join('');
+        const last = localStorage.getItem('pitchmirror_last_script');
+        if (last && (scripts || []).some((s) => s.script_id === last)) { scriptSelect.value = last; onScriptPicked(); }
+      }
+      const lib = await fetch('/api/library', { headers: apiHeaders() });
+      if (lib.ok) {
+        const { docs } = await lib.json();
+        const n = (docs || []).length;
+        $('mt-library-count').textContent = n ? `(${n} document${n === 1 ? '' : 's'})` : '(none added yet — add them in Prepare me)';
+        if (!n && useLibraryBox) useLibraryBox.disabled = true;
+        else if (useLibraryBox && localStorage.getItem('pitchmirror_use_library') === '1') useLibraryBox.checked = true;
+      }
+    } catch (_) { /* offline: no scripts */ }
+  }
+
+  /** Picking a script fills the brief (only fields that are still empty) and loads its lines for the Script tab. */
+  async function onScriptPicked() {
+    const id = scriptSelect.value;
+    try { localStorage.setItem('pitchmirror_last_script', id); } catch (_) { /* ignore */ }
+    script = null; scriptStatus = null;
+    if (!id) { renderAssist(); return; }
+    try {
+      const resp = await fetch(`/api/scripts/${encodeURIComponent(id)}`, { headers: apiHeaders() });
+      if (!resp.ok) return;
+      script = await resp.json();
+      if (briefFields.points && !briefFields.points.value.trim()) briefFields.points.value = (script.key_points || []).join('\n');
+      if (briefFields.objections && !briefFields.objections.value.trim()) {
+        briefFields.objections.value = (script.objections || []).map((o) => `${o.label}: ${o.answer}`).join('\n');
+      }
+      if (script.minutes && briefFields.minutes && [...briefFields.minutes.options].some((o) => Number(o.value) === script.minutes)) {
+        briefFields.minutes.value = String(script.minutes);
+      }
+      const brief = $('mt-brief'); if (brief) brief.open = true;
+      renderAssist();
+    } catch (_) { /* ignore */ }
+  }
+
+  function renderScript() {
+    const body = b('.pm-script-body');
+    if (!body || !script) return;
+    body.innerHTML = window.ScriptView.render(script.sections, scriptStatus || { next: 0, covered: [], skipped: [] }, { clickable: true });
+    const pct = b('.pm-script-pct');
+    if (pct) pct.textContent = scriptStatus ? `${scriptStatus.pct}% covered` : '';
+    body.querySelectorAll('.sv-line').forEach((li) => li.addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'script_goto', index: Number(li.dataset.idx) }));
+    }));
+    window.ScriptView.scrollToNext(b('.pm-assist-body'));
+  }
+
+  function askLost() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const btn = b('.pm-lost-btn');
+    if (btn) { btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 2500); }
+    ws.send(JSON.stringify({ type: 'script_lost' }));
+  }
+
+  function showWhereYouAre(msg) {
+    markActivity();
+    const card = b('.pm-lost-card');
+    if (!card) return;
+    const here = msg.here ? `<div>You just said: “${esc(msg.here)}”</div>` : '';
+    const next = (msg.next || []).length
+      ? `<div class="next">Say next: ${esc(msg.next[0])}</div>${msg.next[1] ? `<div>Then: ${esc(msg.next[1])}</div>` : ''}`
+      : '<div class="next">That was the last line. Ask for the next step.</div>';
+    card.innerHTML = `<b>${esc(msg.section || 'You are here')}</b>${here}${next}`;
+    card.classList.remove('hidden');
+    if (assistOn) setAssistTab('script');
+    renderScript();
   }
 
   async function loadClients() {
@@ -1506,6 +1615,7 @@
       document.title = '● Coaching — Pitchlight';
       window.__pmSessionActive = true;
       sendBrief();
+      setTimeout(renderAssist, 400);
       await startAudio();
       await startOtherAudio();
       if (!otherStream) {
@@ -1655,6 +1765,9 @@
   clientField?.addEventListener('change', loadLastCall);
   rehearseBtn?.addEventListener('click', startRehearsal);
   loadClients();
+  loadScripts();
+  scriptSelect?.addEventListener('change', onScriptPicked);
+  useLibraryBox?.addEventListener('change', () => { try { localStorage.setItem('pitchmirror_use_library', useLibraryBox.checked ? '1' : '0'); } catch (_) { /* ignore */ } });
   if (clientField?.value) loadLastCall();
   startBtn.addEventListener('click', startMeeting);
   endBtn.addEventListener('click', endMeeting);

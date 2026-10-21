@@ -42,6 +42,13 @@ PitchMirror is an **AI speaking coach**. It listens while you talk, gives short 
    positive notes, objection cards from prepared answers, a question coach and a next-step guard; practice side
    panel with live stats, key-point checklist, advice cards and "Say it better" (`?feedback=live|end`).
 
+**Sales/client-call kit (2026-10-22):** `/prepare` drafts a script, hard questions, objection answers and a cheat
+sheet from pasted material; the script follows your voice in a Script tab (meeting) / live panel (practice) with an
+**I'm lost** button; live answers cite the user's own documents (`/api/library`) and say "Not in your notes" instead
+of inventing; the scorecard gets a Ready / Almost / Not yet check. Code: `backend/{prepare,script_follow,library,
+readiness,userdata}.py`, `frontend/{prepare.*,script-view.js}`. WS adds client `script`, `script_lost`, `script_goto`;
+server `script_loaded`, `script_pos`, `script_where`. Details in PROGRESS.md and `docs/PRODUCT_PLAN.md`.
+
 **Accounts (2026-10-22):** `AUTH_MODE=accounts` makes every person sign in (`/login`) and keeps their data private
 (`backend/auth.py`, guide in `docs/ORG_ROLLOUT.md`). Off by default; the old "Who's testing?" picker remains for a
 one-laptop pilot.
@@ -85,7 +92,7 @@ Other pages: `/` landing, `/guide` ("How to try it"), `/pilot` feedback summary,
   ```
 
   Open Docker Desktop first with `open -a Docker` if needed. macOS has no `timeout` command.
-- **Tests:** `.venv/bin/python -m pytest tests/ -q` (106 tests). Live-model smoke test: `scripts/smoke_test.py`.
+- **Tests:** `.venv/bin/python -m pytest tests/ -q` (116 tests). Live-model smoke test: `scripts/smoke_test.py`.
 - **Chrome** with headphones is needed for the full experience.
 
 ## Where things stand (2026-10-21)

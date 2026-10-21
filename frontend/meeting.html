@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/bubble.css?v=20261022c" />
-  <link rel="stylesheet" href="/static/meeting.css?v=20261022c" />
-  <link rel="stylesheet" href="/static/tester.css?v=20261022c" />
+  <link rel="stylesheet" href="/static/bubble.css?v=20261022d" />
+  <link rel="stylesheet" href="/static/meeting.css?v=20261022d" />
+  <link rel="stylesheet" href="/static/tester.css?v=20261022d" />
 </head>
 <body class="mt-page">
 
@@ -17,6 +17,7 @@
     <a class="mt-logo" href="/"><span class="mt-logo-mark">◎</span> Pitchlight</a>
     <span class="mt-header-tag">Meeting Mode</span>
     <nav class="mt-header-links">
+      <a href="/prepare">Prepare me</a>
       <a href="/app">Practice app</a>
       <a href="/app?view=history">History</a>
       <a href="/guide">How to try it</a>
@@ -88,6 +89,14 @@
             <datalist id="mt-clients"></datalist>
           </label>
           <div id="mt-last-call" class="mt-last-call mt-field-wide hidden" aria-live="polite"></div>
+          <label class="mt-field mt-field-wide">
+            <span>Script <em>(follows your voice in the Script tab — <a href="/prepare" target="_blank" rel="noopener">make one with Prepare me</a>)</em></span>
+            <select id="mt-script"><option value="">No script</option></select>
+          </label>
+          <label class="mt-field mt-field-wide mt-check">
+            <input id="mt-use-library" type="checkbox" />
+            <span>Answer from my documents <em id="mt-library-count">(none added yet)</em></span>
+          </label>
           <label class="mt-field mt-field-wide">
             <span>Context notes</span>
             <textarea id="mt-notes" rows="4" maxlength="6000"
@@ -294,12 +303,18 @@
          <span class="pm-assist-tabs" role="tablist">
            <button type="button" class="pm-assist-tab is-on" role="tab" data-tab="answers" aria-selected="true">Answers</button>
            <button type="button" class="pm-assist-tab" role="tab" data-tab="questions" aria-selected="false">Questions <b class="pm-qcount">0</b></button>
+           <button type="button" class="pm-assist-tab pm-script-tab hidden" role="tab" data-tab="script" aria-selected="false">Script</button>
          </span>
          <button type="button" class="pm-icon pm-assist-clear" title="Clear answers" aria-label="Clear answers">⌫</button>
        </div>
        <div class="pm-assist-body">
          <div class="pm-assist-list" data-view="answers"></div>
          <div class="pm-assist-list hidden" data-view="questions"></div>
+         <div class="pm-assist-list hidden" data-view="script">
+           <div class="pm-script-bar"><button type="button" class="pm-lost-btn">🧭 I'm lost</button><span class="pm-script-pct"></span></div>
+           <div class="pm-lost-card hidden" role="status"></div>
+           <div class="pm-script-body"></div>
+         </div>
        </div>
      </aside>
     </div>
@@ -307,10 +322,11 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/tester.js?v=20261022c"></script>
-  <script src="/static/audio-leveler.js?v=20261022c"></script>
-  <script src="/static/gaze.js?v=20261022c"></script>
-  <script src="/static/rehearse.js?v=20261022c"></script>
-  <script src="/static/meeting.js?v=20261022c"></script>
+  <script src="/static/tester.js?v=20261022d"></script>
+  <script src="/static/audio-leveler.js?v=20261022d"></script>
+  <script src="/static/gaze.js?v=20261022d"></script>
+  <script src="/static/rehearse.js?v=20261022d"></script>
+  <script src="/static/script-view.js?v=20261022d"></script>
+  <script src="/static/meeting.js?v=20261022d"></script>
 </body>
 </html>
