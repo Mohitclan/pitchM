@@ -457,7 +457,7 @@
       pushAssistCard({
         kind: msg.cardKind || msg.helpKind || 'answer', label: label.replace(/^\S+\s/, ''),
         question: msg.question || '', lines: points, ts: msg.ts,
-        sources: msg.sources, notInNotes: !!msg.not_in_notes,
+        sources: msg.sources, notInNotes: !!msg.not_in_notes, say: msg.say, prepared: !!msg.prepared,
       });
     }
     // Page: keep every hint in the nudges column.
@@ -467,6 +467,7 @@
     card.innerHTML = `
       <div class="mt-nudge-head"><span class="mt-line-time">${fmt(msg.ts || elapsed())}</span><b>${esc(label.replace(/^\S+\s/, ''))}</b></div>
       <div class="mt-nudge-desc">${esc(msg.question || '')}</div>
+      ${msg.say ? `<div class="mt-say"><b>${msg.prepared ? 'Your prepared answer' : 'Say this'}:</b> ${esc(msg.say)}</div>` : ''}
       <ol>${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>`;
     nudgesEl.prepend(card);
     if (!bubble || assistOn) return;
@@ -1014,6 +1015,7 @@
         <div class="pm-ac-head"><span class="pm-ac-label">${esc(c.kind === 'objection' ? `🛡 ${c.label}` : (ASSIST_LABELS[c.kind] || c.label))}</span>
           <span class="pm-ac-time">${fmt(c.ts)}</span></div>
         ${c.question ? `<div class="pm-ac-q">“${esc(c.question)}”</div>` : ''}
+        ${c.say ? `<div class="pm-say"><b>${c.prepared ? 'Your prepared answer' : 'Say this'}</b>${esc(c.say)}</div>` : ''}
         <${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'} class="pm-ac-lines${c.kind === 'catchup' || c.kind === 'ask' ? ' plain' : ''}">
           ${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}
         </${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'}>

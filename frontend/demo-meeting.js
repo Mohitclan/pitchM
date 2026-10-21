@@ -19,6 +19,7 @@
   let sections = null, status = null, lostCard = null;
   let play = null;                      // { i, clip, pos, ended, tail }
   let finished = false;
+  let latestSay = null;                 // the newest ready-to-read answer { question, say, prepared }
 
   const headers = () => {
     const h = { 'x-user-id': localStorage.getItem('pitchmirror_user_id') || '' };
@@ -77,7 +78,7 @@
     if (!practice) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     ctx.resume().catch(() => {});
-    idx = 0; sat = {}; skipped = {}; played = {}; sections = null; status = null; lostCard = null; play = null; finished = false;
+    idx = 0; sat = {}; skipped = {}; played = {}; sections = null; status = null; lostCard = null; play = null; finished = false; latestSay = null;
     bridge.onTick = tick;
     bridge.onMessage = onMessage;
     $('mt-guide').classList.remove('hidden');
@@ -141,6 +142,7 @@
     let changed = false;
     if (msg.type === 'script_loaded' && msg.sections) { sections = msg.sections; status = msg.status; changed = true; }
     if ((msg.type === 'script_pos' || msg.type === 'script_where') && msg.status) { status = msg.status; changed = true; }
+    if (msg.type === 'answer_hint' && msg.say) { latestSay = { question: msg.question, say: msg.say, prepared: !!msg.prepared }; changed = true; }
     if (msg.type === 'script_where') lostCard = msg;
     if (msg.type === 'script_pos') lostCard = null;
     for (const s of kit.steps) {
@@ -151,7 +153,7 @@
   }
 
   /* ── Guide ── */
-  function go(delta) { idx = Math.max(0, Math.min(kit.steps.length - 1, idx + delta)); lostCard = null; render(); }
+  function go(delta) { idx = Math.max(0, Math.min(kit.steps.length - 1, idx + delta)); lostCard = null; latestSay = null; render(); }
 
   function render() {
     const box = $('mt-guide');
@@ -179,6 +181,7 @@
             <button class="mt-btn mt-btn-primary mg-play" ${speaking ? 'disabled' : ''}>${speaking ? '🔊 Priya is speaking…' : played[step.id] ? '↻ Ask again' : '▶ Priya asks'}</button>
             <span class="mg-phase">${phase === 'ready' ? 'Press the button when you are ready.' : phase === 'priya' ? 'Listen. Your mic is paused while she speaks.' : 'Your turn. Speak now.'}</span>
           </div>
+          ${latestSay && (played[step.id] || sat[step.id]) ? `<div class="mg-say"><b>${latestSay.prepared ? 'Your prepared answer' : 'Say this'}</b>${esc(latestSay.say)}</div>` : ''}
           <div class="mg-you"><b>You:</b> ${esc(step.you)}</div>
           <div class="mg-watch ${seen ? 'is-seen' : ''}"><span class="mg-tick">${seen ? '✓ Seen' : '○ Waiting'}</span> ${esc(step.watch)}</div>
           <div class="mg-nav">
@@ -197,7 +200,7 @@
     box.querySelector('.mg-play')?.addEventListener('click', () => startClip(idx));
     box.querySelector('.mg-next')?.addEventListener('click', () => { if (!sat[step.id]) skipped[step.id] = true; go(1); });
     box.querySelector('.mg-prev')?.addEventListener('click', () => go(-1));
-    box.querySelectorAll('.mg-chip').forEach((c) => c.addEventListener('click', () => { idx = Number(c.dataset.i); lostCard = null; render(); }));
+    box.querySelectorAll('.mg-chip').forEach((c) => c.addEventListener('click', () => { idx = Number(c.dataset.i); lostCard = null; latestSay = null; render(); }));
     box.querySelector('.mg-lost')?.addEventListener('click', () => bridge.askLost());
     box.querySelectorAll('.sv-line').forEach((li) => li.addEventListener('click', () => bridge.gotoLine(Number(li.dataset.idx))));
     window.ScriptView.scrollToNext(box.querySelector('.mg-script-body'));

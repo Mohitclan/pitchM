@@ -54,3 +54,5 @@
 .cp-upload details { font-size: 13px; width: 100%; }
 .cp-upload details > * { margin-top: 8px; display: block; }
 .cp-upload input[type=text], .cp-upload textarea { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--border-hi); border-radius: 10px; }
+
+.pp-practice-link { display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; background: var(--accent-dim); border-color: var(--accent); font-size: 14px; }

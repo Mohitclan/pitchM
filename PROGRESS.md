@@ -573,3 +573,19 @@ shown at the top of setup; a "Tested ✓" badge appears once one is finished).
   ignores spaces ("ClinicSuite"); plain price/data questions are no longer shown as objections; filler words like
   "much/please/tell" ignored in document search; `≥2 matching words` counted before the common-word filter.
 - Tests: `tests/test_practice_meeting.py`. 128 passing. Old manual kit (`testkit/`) still works for a real-tab test.
+
+## Practice-meeting feedback: script pace + ready-to-read answers — 2026-10-23
+Problem reported: while answering Priya, the script raced to its last line and faded, leaving nothing to read.
+- **Script follower no longer races** (`backend/script_follow.py`): only reading on from the current place (next 4 lines)
+  moves it at once. A match further away is just remembered; it moves the place only after a second match in the same area
+  (so one answer that reuses later wording changes nothing). While a client question is open (45 s after it,
+  `SCRIPT_ANSWER_WINDOW_S`, `last_client_question_at`) far jumps are ignored completely. Re-matches of the previous
+  sentence no longer hide a far match.
+- **"Say this"**: every answer outline now also carries `say`, the exact 2–3 sentences to read aloud (55 words max, first
+  person, only facts from the notes / hub), shown big above the 3 hint points in the Answers panel, the page card and the
+  practice guide. Prompt asks for a `SAY:` line; `_parse_say`, `_deliver_answer_hint(..., say, prepared)`.
+- **Your prepared answers, word for word**: the script's saved *hard questions* (Prepare me) are matched to the client's
+  question (`_prepared_answer`, ≥50% of the prepared question's words); a match is shown as "Your prepared answer" without a
+  model call. The practice meeting has one (step 8, setup for many clinics), now "read it, then carry on".
+- Live check (real models): answering a price question with price/pilot wording left the script at line 1; the answer card
+  gave a ready sentence citing the hub (no setup fee for 22 clinics). 131 tests.

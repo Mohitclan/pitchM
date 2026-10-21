@@ -70,3 +70,39 @@ def test_practice_sessions_stay_out_of_stats_and_memory(tmp_path, monkeypatch):
     kit = c.get("/api/demo-kit", headers=h).json()
     assert kit["completed"] is True and len(kit["steps"]) == 11
     assert c.get("/api/demo-kit", headers={"x-user-id": "bob"}).json()["completed"] is False
+
+
+def test_ready_to_read_answers_are_parsed_and_prepared_answers_win():
+    import backend.main as m
+    from backend.session_state import SessionState
+    raw = ("Hint. First, confirm 49 dollars. Second, no setup fee. Third, offer the pilot.\n"
+           "SAY: It is 49 dollars per clinic per month, and there is no setup fee for ten or more clinics.")
+    assert m._parse_answer_hint(raw) == ["confirm 49 dollars", "no setup fee", "offer the pilot"]
+    assert m._parse_say(raw).startswith("It is 49 dollars per clinic") and m._parse_say("Hint. First, a. Second, b.") == ""
+    st = SessionState(session_id="s", user_id="u", practice_meeting=True)
+    st.hard_questions = list(demo_kit.HARD_QUESTIONS)
+    got = m._prepared_answer(st, "Tell me more about how the setup would work for twenty two clinics.")
+    assert got and "three steps" in got["answer"]
+    assert m._prepared_answer(st, "Do you have SOC 2 certification?") is None
+    st.live_queue = None
+    m._request_answer_hint(st, "Tell me more about how the setup would work for twenty two clinics.")
+    event = st.ws_event_queue.get_nowait()
+    assert event["type"] == "answer_hint" and event["prepared"] and "three steps" in event["say"] and len(event["points"]) == 3
+
+
+def test_script_does_not_jump_while_answering_a_client_question():
+    import time
+    import backend.main as m
+    from backend import script_follow
+    from backend.session_state import SessionState
+    st = SessionState(session_id="s", user_id="u", practice_meeting=True)
+    st.script_follower = script_follow.ScriptFollower(demo_kit.script_sections())
+    m._script_feed(st, "thanks for making the time today Priya")
+    st.last_client_question_at = time.monotonic()                      # Priya just asked something
+    for line in ("Billing Hub costs forty nine dollars per clinic per month", "Annual plans get two months free",
+                 "I suggest a free thirty day pilot on three of your clinics"):
+        m._script_feed(st, line)
+    assert st.script_follower.pos == 0                                 # answering: no jumping around the script
+    st.last_client_question_at = -1e9
+    m._script_feed(st, "I will show you how Billing Hub puts every clinic payment and insurance claim in one dashboard")
+    assert st.script_follower.pos >= 1                                 # reading on works as before

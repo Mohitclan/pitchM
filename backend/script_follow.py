@@ -73,7 +73,8 @@ def flatten(sections: list[dict]) -> list[dict]:
 class ScriptFollower:
     """Tracks the presenter's place in the script from what they say."""
 
-    NEAR_AHEAD = 10             # lines ahead of the current place that count as "near"
+    NEAR_AHEAD = 4              # lines ahead of the current place that count as "near" (move at once)
+    FAR_CONFIRM_SPAN = 3        # a jump elsewhere needs two matches in the same area, so one answer can't drag the script along
     TAIL_TOKENS = 10            # words kept from the previous segment (a sentence can arrive in two pieces)
     SHORT_SEGMENT = 12          # only segments shorter than this borrow the previous segment's tail
 
@@ -92,6 +93,7 @@ class ScriptFollower:
         self.pos = -1                     # index of the last line spoken
         self.covered: set[int] = set()
         self._tail: list[str] = []
+        self._pending_far: int | None = None      # an unconfirmed far-away match (line index)
         self.last_match_at = 0.0          # monotonic time of the last match
 
     def __bool__(self) -> bool:
@@ -112,26 +114,43 @@ class ScriptFollower:
             return frac >= 0.45 and shared >= 3
         return frac >= 0.65 and shared >= 4
 
-    def feed(self, text: str) -> bool:
-        """Take newly spoken words. Returns True when the place or the covered set changed."""
+    def feed(self, text: str, allow_far: bool = True) -> bool:
+        """Take newly spoken words. Returns True when the place or the covered set changed.
+        allow_far=False (answering a client's question): only reading on from the current place moves the script."""
         tokens = content_tokens(text)
         if not tokens or not self.lines:
             return False
         window = set(tokens) | (set(self._tail) if len(tokens) < self.SHORT_SEGMENT else set())
         self._tail = tokens[-self.TAIL_TOKENS:]
         lo, hi = max(0, self.pos - 1), min(len(self.lines), self.pos + 1 + self.NEAR_AHEAD)
-        matched: list[int] = []
+        near: list[int] = []
+        far: list[int] = []
         for ln in self.lines:
+            in_near = lo <= ln["idx"] < hi
             frac, shared = self._score(ln["toks"], window)
-            if self._is_match(frac, shared, len(ln["toks"]), near=lo <= ln["idx"] < hi):
-                matched.append(ln["idx"])
-        if not matched:
-            return False
+            if self._is_match(frac, shared, len(ln["toks"]), near=in_near):
+                (near if in_near else far).append(ln["idx"])
         before = (self.pos, len(self.covered))
-        self.covered.update(matched)
-        newest = max(matched)
-        if newest > self.pos or (matched and max(matched) < self.pos - 2):
-            self.pos = newest                      # moved on (or went back and re-read an earlier part)
+        ahead = [i for i in near if i > self.pos]
+        if ahead:                                      # reading on from where they were
+            self._pending_far = None
+            self.covered.update(near)
+            self.pos = max(ahead)
+        elif far and not allow_far:
+            return False
+        elif far:
+            newest = max(far)
+            if self._pending_far is not None and abs(newest - self._pending_far) <= self.FAR_CONFIRM_SPAN:
+                self.covered.update(far)               # second match in the same area: the presenter really went there
+                self.pos = newest
+                self._pending_far = None
+            else:
+                self._pending_far = newest             # first sign only: remember, change nothing
+                return False
+        elif near:                                     # the same lines again (a sentence split in two): nothing new
+            self.covered.update(near)
+        else:
+            return False
         self.last_match_at = time.monotonic()
         return (self.pos, len(self.covered)) != before
 

@@ -798,6 +798,7 @@ def _load_script(state: SessionState, payload: dict) -> None:
         sections = demo_kit.script_sections()
         state.script_follower = script_follow.ScriptFollower(sections)
         state.script_id, state.script_name, state.script_target_minutes = "practice", "Northwind call (practice)", 15
+        state.hard_questions = list(demo_kit.HARD_QUESTIONS)
         state.library = None
         state._enqueue({"type": "script_loaded", "ok": True, "library": False, "sections": sections,
                         "status": state.script_follower.status()})
@@ -808,6 +809,7 @@ def _load_script(state: SessionState, payload: dict) -> None:
         state.script_follower = script_follow.ScriptFollower(sections) or None
         state.script_id, state.script_name = script["script_id"], script["name"]
         state.script_target_minutes = int(script.get("minutes") or 0)
+        state.hard_questions = list(script.get("hard_questions") or [])
         state.record_timeline("script", f"Script: {script['name']} ({len(state.script_follower.lines) if state.script_follower else 0} lines)")
     venture = str(payload.get("venture") or "")[:60]
     if venture:
@@ -821,9 +823,13 @@ def _load_script(state: SessionState, payload: dict) -> None:
                     "status": state.script_follower.status() if state.script_follower else None})
 
 
+SCRIPT_ANSWER_WINDOW_S = 45.0     # after a client question the script only follows reading-on, never jumps
+
+
 def _script_feed(state: SessionState, text: str) -> None:
     follower = state.script_follower
-    if follower and follower.feed(text):
+    answering = time.monotonic() - state.last_client_question_at < SCRIPT_ANSWER_WINDOW_S
+    if follower and follower.feed(text, allow_far=not answering):
         state._enqueue({"type": "script_pos", "status": follower.status()})
 
 
@@ -1987,8 +1993,9 @@ HINT_MODEL_TIMEOUT_S = 8.0
 _hint_client: genai.Client | None = None
 
 
-def _deliver_answer_hint(state: SessionState, question: str, points: list[str]) -> None:
+def _deliver_answer_hint(state: SessionState, question: str, points: list[str], say: str = "", prepared: bool = False) -> None:
     hint = {"question": question, "points": points, "ts": round(state.duration_seconds(), 1),
+            **({"say": say} if say else {}), **({"prepared": True} if prepared else {}),
             **state.hint_sources.get(question, {})}
     state.answer_hints.append(hint)
     state._enqueue({"type": "answer_hint", **hint})
@@ -1996,11 +2003,31 @@ def _deliver_answer_hint(state: SessionState, question: str, points: list[str]) 
     logger.info("answer_hint session=%s points=%s", state.session_id, points)
 
 
+def _prepared_answer(state: SessionState, question: str) -> dict | None:
+    """A hard question the presenter already wrote an answer for (Prepare me / the script) that this question matches."""
+    q = set(doc_library.content_tokens(question))
+    best, best_score = None, 0.0
+    for item in getattr(state, "hard_questions", None) or []:
+        t = set(doc_library.content_tokens(item.get("question", "")))
+        if not t or not item.get("answer"):
+            continue
+        shared = len(q & t)
+        score = shared / len(t)
+        if shared >= min(2, len(t)) and score >= 0.5 and score > best_score:
+            best, best_score = item, score
+    return best
+
+
 def _request_answer_hint(state: SessionState, question: str) -> None:
     """Get a 3-point outline the presenter can follow to answer the question just asked."""
     if state.live_closed:
         return
     state.hint_question = question
+    prepared = _prepared_answer(state, question)
+    if prepared:                                    # the presenter wrote this answer in advance: use it word for word
+        points = [" ".join(sent.split()[:10]) for sent in re.split(r"(?<=[.!?])\s+", prepared["answer"]) if sent.strip()][:3]
+        _deliver_answer_hint(state, question, points or [prepared["answer"][:60]], prepared["answer"], prepared=True)
+        return
     prompt = _answer_hint_prompt(state, question)
     prompt += _ground_in_library(state, question)
     try:
@@ -2018,10 +2045,11 @@ async def _hint_via_text_model(state: SessionState, question: str, prompt: str) 
     started = time.monotonic()
     if claude_client.claude_enabled():
         try:
-            points = _parse_answer_hint(await claude_client.fast_text(prompt))
+            raw_reply = await claude_client.fast_text(prompt, max_tokens=500)
+            points = _parse_answer_hint(raw_reply)
             if points:
                 if state.hint_question == question and not state.live_closed:
-                    _deliver_answer_hint(state, question, points)
+                    _deliver_answer_hint(state, question, points, _parse_say(raw_reply))
                 logger.info("answer_hint_latency session=%s %.1fs model=%s", state.session_id,
                             time.monotonic() - started, claude_client.FAST_MODEL)
                 return
@@ -2037,7 +2065,7 @@ async def _hint_via_text_model(state: SessionState, question: str, prompt: str) 
         points = _parse_answer_hint(resp.text or "")
         if points:
             if state.hint_question == question and not state.live_closed:   # still the latest question
-                _deliver_answer_hint(state, question, points)
+                _deliver_answer_hint(state, question, points, _parse_say(resp.text or ""))
             logger.info("answer_hint_latency session=%s %.1fs model=%s", state.session_id, time.monotonic() - started, HINT_MODEL)
             return
         logger.info("answer_hint_unparsed session=%s text=%r", state.session_id, (resp.text or "")[:120])
@@ -2097,14 +2125,23 @@ def _answer_hint_prompt(state: SessionState, question: str) -> str:
         + (f"{brief}\n" if (brief := _brief_block(state)) else "")
         + f"\nGive the presenter a quick outline to answer well ({framework}). Use the presenter's own "
         "facts from the conversation when possible; never invent numbers.\n"
-        "Reply in exactly this spoken form and nothing else: "
-        "\"Hint. First, <point>. Second, <point>. Third, <point>.\" Each point at most 8 words. Do not call tools."
+        "Reply in exactly this form and nothing else. Line 1: "
+        "\"Hint. First, <point>. Second, <point>. Third, <point>.\" Each point at most 8 words. "
+        "Line 2: \"SAY: <the exact words the presenter can read aloud to the client: 2 to 3 short sentences, at most 55 words, "
+        "first person, plain spoken language, using only the facts above>\". Do not call tools."
     )
+
+
+def _parse_say(text: str) -> str:
+    """The ready-to-read answer after 'SAY:' (empty if the model gave none)."""
+    m = re.search(r"\bSAY\s*:\s*(.+)", text or "", re.IGNORECASE | re.DOTALL)
+    say = re.sub(r"\s+", " ", m.group(1)).strip(" \"'") if m else ""
+    return say[:420]
 
 
 def _parse_answer_hint(text: str) -> list[str] | None:
     """'Hint. First, X. Second, Y. Third, Z.' → [X, Y, Z]; None if it isn't a hint."""
-    raw = re.sub(r"\s+", " ", text or "").strip()
+    raw = re.sub(r"\s+", " ", re.split(r"\bSAY\s*:", text or "", flags=re.IGNORECASE)[0]).strip()
     parts = re.split(r"\b(?:first|second|third|1|2|3)\s*[,:.)-]\s*", raw, flags=re.IGNORECASE)
     points = [p.strip(" .;:-") for p in parts[1:] if p.strip(" .;:-")]
     if len(points) < 2:
@@ -2332,6 +2369,7 @@ def _log_client_question(state: SessionState, text: str) -> None:
     if not text or (state.client_questions and state.client_questions[-1]["text"] == text):
         return
     state.client_questions.append({"ts": round(state.duration_seconds(), 1), "text": text})
+    state.last_client_question_at = time.monotonic()
     del state.client_questions[:-MAX_CLIENT_QUESTIONS]
     state._enqueue({"type": "client_questions", "items": state.client_questions})
 

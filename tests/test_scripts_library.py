@@ -35,8 +35,6 @@ def test_follower_tracks_paraphrase_and_flags_skipped_section():
     assert f.feed("I want to show how Billing Hub centralises clinic payments")
     assert f.pos == 1
     assert not f.feed("anyway the weather has been lovely this week")        # chatter matches nothing
-    assert f.feed("can we book a pilot call next Wednesday")                  # jumped to the end
-    assert f.skipped_sections() == [1] and f.status()["pct"] < 100
 
 
 def test_follower_locate_and_goto():
@@ -271,3 +269,16 @@ def test_business_name_matches_even_when_transcribed_without_a_space(tmp_path, m
     st.venture = "Billing Hub"
     hits, _ = m._knowledge_hits(st, "what does ClinicSuite cost per clinic for the platform")
     assert hits[0]["title"] == "Company: Clinic Suite · Pricing"
+
+
+def test_one_far_match_changes_nothing_two_in_the_same_area_move_the_place():
+    from backend import demo_kit
+    f = script_follow.ScriptFollower(demo_kit.script_sections())
+    f.feed("thanks for making the time today Priya")
+    assert f.pos == 0
+    # replying to a client question reuses words from the LAST section once: the place must not move
+    assert not f.feed("sure we can book a follow up call next wednesday to agree the details")
+    assert f.pos == 0 and 15 not in f.covered
+    # a second match in the same area: the presenter really skipped ahead
+    assert f.feed("I suggest a free thirty day pilot on three of your clinics")
+    assert f.pos >= 14 and f.skipped_sections() == [1, 2, 3, 4]

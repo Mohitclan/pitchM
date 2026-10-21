@@ -313,3 +313,8 @@
 .sv-line.is-next { color: var(--pm-ink); font-weight: 700; font-size: 16px; background: rgba(147, 197, 253, 0.16); box-shadow: inset 3px 0 0 #93c5fd; }
 .pm-ac-src { margin-top: 6px; font-size: 11.5px; color: var(--pm-ink-3); }
 .pm-ac-src.warn { color: #fbbf24; }
+
+/* Ready-to-read answer: the exact words to say, big and first. */
+.pm-say { margin: 6px 0 4px; padding: 9px 11px; border-radius: 10px; background: rgba(147, 197, 253, 0.14); border-left: 3px solid #93c5fd;
+  font-size: 16.5px; font-weight: 600; line-height: 1.5; color: var(--pm-ink); }
+.pm-say b { display: block; margin-bottom: 3px; font-size: 10.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--pm-hint); }

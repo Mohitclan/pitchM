@@ -95,6 +95,16 @@ HUB_DOCS = [
         "product with its own team, but customers can buy both together at a ten percent bundle discount.")},
 ]
 
+# Answers the presenter wrote in advance (like Prepare me's "hard questions"): used word for word when a client question matches.
+HARD_QUESTIONS = [
+    {"question": "How would the setup work for a group of clinics?",
+     "answer": ("We do it in three steps. First, we import your patient balances and open claims from your current system. "
+                "Second, we run one sixty minute training for the front desk team, so nobody is surprised. "
+                "Third, we run Billing Hub next to your current process for one week, and you switch over only when you are happy. "
+                "The whole thing takes about two weeks and your front desk keeps working normally.")},
+]
+
+
 # What each step expects to see; the browser ticks it when the matching server message arrives.
 #   expect: script (script lines covered), mood, answer_company, answer_clinic, objection, not_in_notes, lost, talk,
 #           answer_data, commit, finish, none
@@ -129,7 +139,7 @@ STEPS = [
      "watch": "A skeptical client mood, a filler-word nudge, and I'm lost pointing you to the next unspoken line."},
     {"id": "c8", "feature": "Talk-time nudge", "expect": "talk",
      "client": "Tell me more about how the setup would work for twenty two clinics.",
-     "you": "Talk without stopping for about 75 seconds: describe the rollout (import balances, one 60 minute training, one week in parallel, then switch).",
+     "you": "A ready answer appears as Your prepared answer. Read it out, then keep going in your own words for about 75 seconds: import balances, one 60 minute training, one week in parallel, then switch.",
      "watch": "After about a minute a nudge asks you to check in or let the client speak."},
     {"id": "c9", "feature": "Answer about your data", "expect": "answer_data",
      "client": "What happens to our data if we ever stop using it?",

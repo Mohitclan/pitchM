@@ -269,6 +269,8 @@ class SessionState:
     script_target_minutes: int = 0
     script_follower: object = None       # ScriptFollower | None
     script_lost_pending: bool = False
+    last_client_question_at: float = -1e9   # monotonic time the client last asked something
+    hard_questions: list = field(default_factory=list)   # [{question, answer}] the presenter prepared (script / demo kit)
     library: object = None               # Library | None (the presenter's own documents)
     practice_meeting: bool = False       # the built-in practice meeting with the dummy client (demo_kit.py)
     venture: str = ""                    # the company business this call is about (searched first in the hub)

@@ -308,3 +308,7 @@
 .mt-guide .sv-line { padding: 3px 6px; border-radius: 6px; font-size: 14px; line-height: 1.45; color: var(--text-2); cursor: pointer; }
 .mt-guide .sv-line.is-done { opacity: .45; text-decoration: line-through; }
 .mt-guide .sv-line.is-next { opacity: 1; color: var(--text); font-weight: 700; font-size: 15.5px; background: var(--accent-dim); box-shadow: inset 3px 0 0 var(--accent); }
+
+.mt-say { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-dim); border-left: 3px solid var(--accent); font-size: 14.5px; line-height: 1.5; }
+.mg-say { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-dim); border-left: 3px solid var(--accent); font-size: 17px; font-weight: 600; line-height: 1.5; }
+.mg-say b { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); }
