@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PitchMirror film stage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5f6f8;
+    --ink: #0d1117;
+    --ink-2: #5b6272;
+    --night: #0b0c10;
+    --accent: #1d4ed8;
+    --violet: #7c3aed;
+    --font-d: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-b: 'Manrope', system-ui, sans-serif;
+  }
+  html, body { margin: 0; padding: 0; background: #000; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--paper); font-family: var(--font-b); }
+  .scene { position: absolute; inset: 0; opacity: 0; will-change: opacity; }
+  .scene.dark { background: var(--night); color: #f5f6f8; }
+  .scene.light { background: var(--paper); color: var(--ink); }
+
+  /* Headlines */
+  .headline { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+  .headline h1 { margin: 0; font-family: var(--font-d); font-weight: 700; font-size: 92px; letter-spacing: -2.4px; line-height: 1.04; }
+  .headline p { margin: 22px 0 0; font-size: 34px; font-weight: 500; color: var(--ink-2); letter-spacing: -0.2px; }
+  .dark .headline p { color: #9aa1ae; }
+  .word { position: absolute; left: 0; right: 0; top: 50%; text-align: center; font-family: var(--font-d); font-weight: 700; font-size: 120px; letter-spacing: -3px; transform: translateY(-50%); }
+
+  /* Brand */
+  .brand { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+  .brand .mark { display: inline-flex; align-items: center; gap: 26px; font-family: var(--font-d); font-weight: 800; font-size: 104px; letter-spacing: -3px; }
+  .brand .ring { width: 92px; height: 92px; border-radius: 50%; border: 9px solid var(--accent); box-sizing: border-box; display: grid; place-items: center; }
+  .brand .ring::after { content: ''; width: 34px; height: 34px; border-radius: 50%; border: 7px solid var(--accent); box-sizing: border-box; }
+  .brand .tag { margin-top: 26px; font-size: 40px; font-weight: 600; color: var(--ink-2); letter-spacing: -0.4px; }
+  .brand .cta { display: inline-block; margin-top: 46px; font-size: 26px; font-weight: 700; color: #fff; background: var(--ink); padding: 18px 34px; border-radius: 999px; letter-spacing: 0.1px; }
+
+  /* Chips */
+  .chips { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); display: flex; justify-content: center; gap: 28px; }
+  .chip { font-family: var(--font-d); font-weight: 700; font-size: 64px; letter-spacing: -1.6px; padding: 26px 46px; border-radius: 999px; background: #fff; box-shadow: 0 18px 50px rgba(13,17,23,.08), 0 0 0 1px rgba(13,17,23,.06); }
+  .chips-head { position: absolute; left: 0; right: 0; top: 300px; text-align: center; font-size: 30px; font-weight: 600; color: var(--ink-2); }
+
+  /* Browser frame + camera */
+  .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; will-change: transform; }
+  .frame { position: absolute; border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 40px 100px rgba(13,17,23,.16), 0 0 0 1px rgba(13,17,23,.08); }
+  .chrome { height: 40px; background: #eceef2; display: flex; align-items: center; gap: 9px; padding: 0 18px; border-bottom: 1px solid #dfe2e8; }
+  .chrome i { width: 13px; height: 13px; border-radius: 50%; background: #d3d6dd; display: block; }
+  .chrome .url { margin-left: 18px; flex: 1; max-width: 560px; height: 24px; border-radius: 8px; background: #fff; color: #6b7280; font-size: 14px; display: flex; align-items: center; padding: 0 12px; font-weight: 600; }
+  .screen { position: relative; overflow: hidden; }
+  .screen img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
+
+  /* Cursor */
+  .cursor { position: absolute; width: 30px; height: 30px; left: 0; top: 0; transform-origin: 3px 3px; will-change: transform; filter: drop-shadow(0 3px 5px rgba(0,0,0,.28)); }
+  .ripple { position: absolute; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; border: 3px solid rgba(29,78,216,.55); opacity: 0; }
+  .hl { position: absolute; border-radius: 14px; box-shadow: 0 0 0 3px rgba(29,78,216,.85), 0 0 0 9999px rgba(13,17,23,0); opacity: 0; }
+
+  /* Feature label */
+  .label { position: absolute; left: 96px; bottom: 76px; display: flex; flex-direction: column; gap: 4px; padding: 18px 28px; border-radius: 22px; background: #fff; box-shadow: 0 18px 50px rgba(13,17,23,.16), 0 0 0 1px rgba(13,17,23,.08); opacity: 0; }
+  .label b { font-family: var(--font-d); font-size: 36px; font-weight: 700; letter-spacing: -0.8px; color: var(--ink); }
+  .label span { font-size: 22px; font-weight: 600; color: var(--ink-2); }
+  .label.right { left: auto; right: 96px; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="comps.js"></script>
+<script src="stage.js"></script>
+</body>
+</html>

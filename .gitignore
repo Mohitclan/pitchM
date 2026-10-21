@@ -54,3 +54,10 @@ data/
 
 # Local backup of uncommitted changes (history lives in git now)
 LOCAL_CHANGES.patch
+
+# Product films: dependencies and render scratch (regenerable)
+video/node_modules/
+video/out/work/
+video/out/stills/
+
+.DS_Store
