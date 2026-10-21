@@ -441,3 +441,55 @@ def test_next_step_guard_and_practice_helpers(monkeypatch):
 
     end = SessionState(session_id="t-end", live_feedback=False)
     assert end.live_feedback is False
+
+
+def test_facts_only_from_them_and_deduped_by_key_token():
+    from backend import coach_extras as cx
+    got = cx.parse_facts("FACT: PERSON | Priya, Head of Ops | Them\nFACT: NUMBER | Payback claimed 3 months | You\n"
+                         "FACT: DATE | Setup takes two weeks | You")
+    assert [f["text"] for f in got] == ["Priya, Head of Ops"]
+    march = {"kind": "date", "text": "Wants to go live by March"}
+    assert cx.is_duplicate_fact({"kind": "date", "text": "Go-live target: March, a hard-ish deadline"}, [march])
+    assert cx.is_duplicate_fact({"kind": "number", "text": "Northwind runs 40 clinics"}, [{"kind": "number", "text": "40 clinics"}])
+    assert not cx.is_duplicate_fact({"kind": "need", "text": "Needs one dashboard"}, [march])
+
+
+def test_no_missed_question_advice_while_they_still_have_the_floor(monkeypatch):
+    import backend.main as m
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-floor", session_kind="meeting")
+    s.session_start -= 100
+    s.add_transcript("other", "How long does setup take for forty clinics?")
+    asked = []
+
+    async def fake_quick(prompt, **kw):
+        asked.append(prompt)
+        return "MISSED: How long does setup take"
+
+    monkeypatch.setattr(m, "_quick_text", fake_quick)
+    asyncio.run(m._run_meeting_advice(s))
+    assert not asked and not s.live_advice                      # they just asked: wait for the answer
+    s.transcript[-1]["te"] -= 30                               # …but 30 s of silence is a different story
+    asyncio.run(m._run_meeting_advice(s))
+    assert asked and "ONLY when You have already spoken" in asked[0]
+
+
+def test_both_objections_get_a_card(monkeypatch):
+    import time
+    import backend.main as m
+    from backend import coach_extras as cx
+    from backend.session_state import SessionState
+    s = SessionState(session_id="t-two-obj", session_kind="meeting")
+    calls = []
+    monkeypatch.setattr(m, "_run_objection_card", lambda state, text: calls.append(text) or asyncio.sleep(0))
+
+    async def run():
+        cb = m._stt_callback(s, "other")
+        cb("Honestly, that seems too expensive for us right now.")
+        s.last_objection_at -= 3                               # the second line comes ~4 s later in a real call
+        cb("We already use Zoho for our billing.")
+        cb("It is still too expensive, to be honest.")         # same kind again, too soon
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
+    assert [cx.objection_class(c) for c in calls] == ["price", "competitor"]

@@ -275,6 +275,7 @@ class SessionState:
     prepared_answers: list[dict] = field(default_factory=list)
     objections: list[dict] = field(default_factory=list)
     last_objection_at: float = 0.0       # monotonic
+    objection_class_at: dict = field(default_factory=dict)   # kind → monotonic time of its last card
     # Meeting: open questions the presenter asked (question coach) and the next-step guard.
     open_questions: int = 0
     last_open_question_ts: float = 0.0   # seconds into the session

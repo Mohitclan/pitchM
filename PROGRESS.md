@@ -397,3 +397,26 @@ From the first two live tests (practice 3.5 min, Teams meeting 2.5 min; both ran
 - "Only at the end": no coach voice, no live cards; everything is still measured and shown in the review.
 - Cost: Claude Haiku only (≈3–5 short calls a minute in a live call, fewer in practice). No Gemini cost added.
 - Tests: 88 passing. Not yet tried live.
+
+## Live end-to-end demo test + fixes — 2026-10-21
+
+Drove the running app with spoken audio (macOS `say`: client voice on the 0x06 stream, presenter on 0x01)
+through the real WebSocket protocol: `scripts/live_demo_test.py meeting|practice` (test user `user-demo-test`).
+- **Meeting (sales demo, client "Northwind Dental", chatty=active), run twice:** both sides transcribed; facts,
+  commitments (both sides), objection card with the prepared answer, answer outlines, Ask/Answer help, eye
+  contact, fillers, talk-time nudge, mood arc, 4/4 points, recap + email, Q&A review all worked. Second call with
+  the same client delivered the past-call memory in <1 s and the live tips used it.
+- **Practice (role-play investor):** the investor speaks (760 KB audio) and its text streams as "partner"; live
+  stats, checklist 3/3, three advice cards, Say it better, eye contact, setup chatter ignored, pitch v1 saved,
+  3 rewrites, Q&A review of the investor's questions, all fine.
+- **Bugs found and fixed:** (1) "missed question" advice fired while the client still had the floor → now waits
+  (≥10 s) and the prompt says only after You have spoken; (2) the facts card listed the presenter's own claims
+  and near-duplicates → only what *Them* said, kind-aware dedupe (same number/month/weekday); (3) only one
+  objection got a card when two came ~4 s apart → per-kind cooldown (25 s) with a 2 s global minimum;
+  (4) a practice review wrongly showed a "Meeting recap — pre-call points" block → recap is meeting-only;
+  (5) previous-call "You promised" repeated near-identical items → deduped; (6) role-play sessions skewed the
+  wpm / fillers-per-minute trends (partner talking time) → those rates are skipped for role-play.
+- Demo kit: `DEMO_GUIDE.md` (scripts, flows, fallbacks), `demo/demo-client.html` + `demo/client/*.mp3` (play
+  "Priya" yourself in a tab and share its audio, so no second person is needed).
+- Not covered live: webcam features (gaze in your browser, video replay), >15 min calls, next-step guard and
+  question coach (unit tests only). 91 tests passing.

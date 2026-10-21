@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pitchlight demo — the client (Priya)</title>
+  <style>
+    :root { --bg:#f9fafb; --card:#fff; --line:#e5e7eb; --text:#0d1117; --mute:#6b7280; --accent:#1d4ed8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 18px; color: var(--mute); }
+    ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
+    .when { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--mute); }
+    .says { font-size: 14px; }
+    button { justify-self: start; font: inherit; font-weight: 700; color: #fff; background: var(--accent); border: 0; border-radius: 999px; padding: 8px 18px; cursor: pointer; }
+    button.stop { background: #6b7280; }
+    li.playing { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(29,78,216,.12); }
+    .tip { margin-top: 18px; font-size: 13px; color: var(--mute); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Priya — your demo client</h1>
+  <p class="sub">Open this page in its own Chrome tab. In Pitchlight's Meeting Mode choose <b>Choose meeting audio</b>,
+    pick <b>this tab</b> and tick <b>Share tab audio</b>. Then press the buttons below at the cues in the demo script.</p>
+  <ol id="lines"></ol>
+  <p class="tip">Wear headphones so your microphone doesn't pick up Priya. Lines are in the order of the demo script.</p>
+</main>
+<script>
+  const LINES = [
+    ['client/01-intro.mp3', 'First — right after you say hello', 'Hi, thanks for making the time. I\'m Priya, head of operations at Northwind Dental. We run forty clinics, and we want to go live by March.'],
+    ['client/02-setup-question.mp3', 'After you explain what Billing Hub does', 'How long does setup take for forty clinics?'],
+    ['client/03-objection.mp3', 'After you answer the setup question', 'Honestly, that seems too expensive for us right now. We already use Zoho for our billing.'],
+    ['client/04-need.mp3', 'After you handle the objection and ask about their process', 'Three people reconcile spreadsheets every week, and it takes about two days. We will share our clinic list by next Tuesday.'],
+    ['client/05-next-step.mp3', 'After you propose a call next Wednesday', 'Yes, Wednesday works. Send me an invite.'],
+  ];
+  const list = document.getElementById('lines');
+  let current = null;
+  LINES.forEach(([src, when, text], i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="when">${i + 1}. ${when}</span><span class="says">“${text}”</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = '▶ Play';
+    const audio = new Audio(src);
+    audio.addEventListener('ended', () => { btn.textContent = '▶ Play'; btn.classList.remove('stop'); li.classList.remove('playing'); });
+    btn.addEventListener('click', () => {
+      if (!audio.paused) { audio.pause(); audio.currentTime = 0; btn.textContent = '▶ Play'; btn.classList.remove('stop'); li.classList.remove('playing'); return; }
+      if (current && current !== audio) current.pause();
+      current = audio;
+      audio.play();
+      btn.textContent = '■ Stop'; btn.classList.add('stop'); li.classList.add('playing');
+    });
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+</script>
+</body>
+</html>

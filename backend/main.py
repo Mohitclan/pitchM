@@ -1524,10 +1524,12 @@ def _stt_callback(state: SessionState, speaker: str):
                 state.open_questions += asked
                 state.last_open_question_ts = state.duration_seconds()
                 state._enqueue({"type": "questions", "count": state.open_questions})
-        if (state.session_kind == "meeting" and speaker == "other" and state.chattiness != "quiet"
-                and coach_extras.OBJECTION_RE.search(text)
-                and time.monotonic() - state.last_objection_at >= coach_extras.OBJECTION_GAP_S):
-            state.last_objection_at = time.monotonic()
+        objection_kind = (coach_extras.objection_class(text)
+                          if state.session_kind == "meeting" and speaker == "other" and state.chattiness != "quiet" else None)
+        if (objection_kind
+                and time.monotonic() - state.last_objection_at >= coach_extras.OBJECTION_MIN_GAP_S
+                and time.monotonic() - state.objection_class_at.get(objection_kind, -1e9) >= coach_extras.OBJECTION_GAP_S):
+            state.last_objection_at = state.objection_class_at[objection_kind] = time.monotonic()
             try:
                 asyncio.get_running_loop().create_task(_run_objection_card(state, text))
             except RuntimeError:
@@ -2179,7 +2181,7 @@ async def _run_facts_check(state: SessionState) -> None:
     for fact in coach_extras.parse_facts(reply):
         if len(state.facts) >= coach_extras.MAX_FACTS:
             break
-        if coach_extras.is_duplicate_commitment(fact["text"], [{"task": f["text"]} for f in state.facts]):
+        if coach_extras.is_duplicate_fact(fact, state.facts):
             continue
         row = {"ts": ts, **fact}
         state.facts.append(row)
@@ -2213,6 +2215,9 @@ def _send_advice(state: SessionState, kind: str, text: str, **extra) -> bool:
 
 async def _run_meeting_advice(state: SessionState) -> None:
     """Next move / missed question / (rarely) a positive note, from the last two minutes."""
+    last = next((seg for seg in reversed(state.transcript) if seg.get("s") in ("u", "o")), None)
+    if last and last["s"] == "o" and state.duration_seconds() - last.get("te", last["ts"]) < 10.0:
+        return      # the other side still has the floor — wait for the presenter to respond
     state.advice_pending = True
     try:
         allow_good = time.monotonic() - state.last_good_at >= coach_extras.POSITIVE_GAP_S

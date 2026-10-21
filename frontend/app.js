@@ -2017,7 +2017,7 @@ function _reviewPlainText(data) {
     }
     out.splice(3, 0, ...rc);
   }
-  const points = data.brief?.points || [];
+  const points = data.session_kind === 'meeting' ? (data.brief?.points || []) : [];
   if (points.length) {
     out.push('', `== PRE-CALL POINTS (${points.filter((p) => p.covered).length}/${points.length} covered) ==`);
     points.forEach((p) => out.push(`  ${p.covered ? '[x]' : '[ ]'} ${p.text}`));
@@ -2079,6 +2079,7 @@ const downloadTranscript = downloadSessionReview;
 
 /** After-call recap: summary, decisions, action items, follow-up email, brief coverage. */
 function renderRecap(data) {
+  if (data.session_kind !== 'meeting') return '';   // practice has its own pitch-versions card
   const r = data.recap || {};
   const points = data.brief?.points || [];
   const commitments = Array.isArray(data.commitments) ? data.commitments : [];
@@ -3270,12 +3271,13 @@ function _sessionTrendPoint(data) {
   const speaking = data.session_kind === 'meeting' ? Number((data.talk_stats || {}).you_s) || 0 : 0;
   const minutes = (speaking >= 20 ? speaking : duration) / 60;
   const ok = minutes >= 0.25 && !data.insufficient_speech;
+  const rates = ok && !data.roleplay_role;    // a role-play partner's talking time dilutes per-minute rates
   const fillers = cats.filler_words?.count;
   const drops = cats.eye_contact?.drops;
   return {
     score: ok ? Number(data.overall_score) : null,
-    fillers_per_min: ok && Number.isFinite(fillers) ? fillers / minutes : null,
-    wpm: ok && words ? words / minutes : null,
+    fillers_per_min: rates && Number.isFinite(fillers) ? fillers / minutes : null,
+    wpm: rates && words ? words / minutes : null,
     eye_drops_per_min: ok && Number.isFinite(drops) && duration ? drops / (duration / 60) : null,
   };
 }

@@ -61,3 +61,6 @@ video/out/work/
 video/out/stills/
 
 .DS_Store
+
+# live demo test output (generated audio + recorded sessions)
+scripts/live_test_out/

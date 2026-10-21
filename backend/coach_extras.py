@@ -123,7 +123,7 @@ def previous_call_summary(payload: dict) -> dict:
     promised = [c["task"] for c in commitments if c.get("owner") == "you" and c.get("task")]
     for item in recap.get("action_items") or []:
         if isinstance(item, dict) and str(item.get("owner", "")).lower() in {"you", "me", ""} and item.get("task"):
-            if not any(_norm(item["task"]) == _norm(p) for p in promised):
+            if not is_duplicate_commitment(item["task"], [{"task": p} for p in promised]):
                 promised.append(item["task"])
     return {
         "session_id": payload.get("session_id"),
@@ -278,13 +278,15 @@ def session_trend_point(payload: dict) -> dict:
     fillers = (categories.get("filler_words") or {}).get("count")
     drops = (categories.get("eye_contact") or {}).get("drops")
     ok = minutes >= 0.25 and not payload.get("insufficient_speech")
+    # In a role-play the partner talks too, so per-minute rates over the whole session are diluted: skip them.
+    rates_ok = ok and not payload.get("roleplay_role")
     return {
         "session_id": payload.get("session_id"),
         "created_at": payload.get("created_at"),
         "session_kind": payload.get("session_kind", "practice"),
         "score": payload.get("overall_score") if ok else None,
-        "fillers_per_min": round(fillers / minutes, 2) if ok and isinstance(fillers, (int, float)) else None,
-        "wpm": round(words / minutes) if ok and words else None,
+        "fillers_per_min": round(fillers / minutes, 2) if rates_ok and isinstance(fillers, (int, float)) else None,
+        "wpm": round(words / minutes) if rates_ok and words else None,
         "eye_drops_per_min": round(drops / (duration / 60), 2) if ok and isinstance(drops, (int, float)) and duration else None,
         "duration_seconds": duration,
     }
@@ -334,12 +336,13 @@ def facts_prompt(conversation: str, existing: list[dict]) -> str:
         "Live meeting. Recent conversation (You = presenter, Them = the other side):\n"
         f"{conversation}\n\n"
         f"Facts already noted: {known}\n\n"
-        "List NEW concrete facts from this conversation that the presenter should remember and reuse: "
+        "List NEW concrete facts that THEM stated (or clearly confirmed) which the presenter should remember "
+        "and reuse. NEVER list anything about You, your product, your offer, your plans, or what You promised. "
         "PERSON (a name, with role or company if said), NUMBER (a quantity, price, size or metric, with what it "
         "counts), DATE (a deadline, launch or meeting time, with what it is for), NEED (a goal, pain or "
         "requirement Them stated), TOOL (what Them uses today, or a competitor). Skip anything vague, "
-        "already noted, or only said by You about your own product.\n"
-        "One per line: FACT: <PERSON|NUMBER|DATE|NEED|TOOL> | <fact, max 12 words> | <You|Them>\n"
+        "and never restate a fact already noted in different words.\n"
+        "One per line: FACT: <PERSON|NUMBER|DATE|NEED|TOOL> | <fact, max 12 words> | Them\n"
         "or exactly: NONE"
     )
 
@@ -356,9 +359,25 @@ def parse_facts(text: str) -> list[dict]:
         kind = parts[0].lower()
         fact = " ".join(parts[1].split()).strip(" .")[:120]
         who = "you" if len(parts) > 2 and parts[2].strip().lower().startswith("you") else "them"
-        if kind in FACT_KINDS and fact:
+        # The card is for what the OTHER side said; the presenter's own claims and promises are
+        # tracked elsewhere (commitments), so they would only be noise here.
+        if kind in FACT_KINDS and fact and who == "them":
             out.append({"kind": kind, "text": fact, "who": who})
     return out[:6]
+
+
+_KEY_TOKEN_RE = re.compile(
+    r"\d+|january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today", re.IGNORECASE)
+
+
+def is_duplicate_fact(fact: dict, existing: list[dict]) -> bool:
+    """Same fact in different words: same kind and a shared number / month / weekday, or heavy word overlap."""
+    keys = {k.lower() for k in _KEY_TOKEN_RE.findall(fact["text"])}
+    for other in existing:
+        if keys and other.get("kind") == fact["kind"] and keys & {k.lower() for k in _KEY_TOKEN_RE.findall(other["text"])}:
+            return True
+    return is_duplicate_commitment(fact["text"], [{"task": f["text"]} for f in existing])
 
 
 def facts_text(facts: list[dict]) -> str:
@@ -445,8 +464,8 @@ def meeting_advice_prompt(mode: str, conversation: str, brief: str, recent: list
         + (f"Context:\n{brief}\n\n" if brief else "")
         + (f"Advice already given (don't repeat): {'; '.join(recent[-5:])}\n\n" if recent else "")
         + "Give AT MOST ONE short piece of advice for right now, only if it clearly helps:\n"
-        "MISSED: <the question Them asked that You didn't answer, max 10 words> — when You drifted away "
-        "from a question Them asked.\n"
+        "MISSED: <the question Them asked that You didn't answer, max 10 words> — ONLY when You have "
+        "already spoken since Them asked it and did not answer it. Never when Them is the last to speak.\n"
         "NEXT: <the best next move, imperative, max 10 words> — e.g. ask what happens if they don't fix "
         "it, confirm who else decides, ask about budget or timeline, bring up a point from the context "
         "not covered yet, check they're following.\n"
@@ -499,7 +518,28 @@ OBJECTION_RE = re.compile(
     r"risk|security|data|trust|proof|guarantee|what if it (?:doesn't|fails))\b",
     re.IGNORECASE,
 )
-OBJECTION_GAP_S = 25.0
+OBJECTION_GAP_S = 25.0          # same kind of objection: at most one card per 25 s
+OBJECTION_MIN_GAP_S = 2.0       # any two cards: at least 2 s apart (speech-to-text splits "too expensive" and "we use Zoho" ~4 s apart)
+OBJECTION_CLASSES = {
+    "price": re.compile(r"\b(too (?:expensive|costly|much)|expensive|price|pricing|cost(?:s|ly)?|budget|afford|"
+                        r"cheaper|discount)\b", re.IGNORECASE),
+    "competitor": re.compile(r"\b(already (?:use|have|using|work with)|we use|competitor|alternative|switch(?:ing)?)\b",
+                             re.IGNORECASE),
+    "timing": re.compile(r"\b(not (?:now|right now|a priority|the right time)|next (?:quarter|year)|later|timing)\b",
+                         re.IGNORECASE),
+    "authority": re.compile(r"\b((?:talk|check|run it) (?:to|with|by) (?:my|our)|my boss|the board|decision|approve)\b",
+                            re.IGNORECASE),
+    "trust": re.compile(r"\b(risk|security|trust|proof|guarantee|what if it (?:doesn't|fails)|data)\b", re.IGNORECASE),
+    "other": re.compile(r"\b(not (?:interested|sure)|send me (?:an )?(?:email|deck|info)|think about it|"
+                        r"don't (?:see|need)|why would (?:we|i))\b", re.IGNORECASE),
+}
+
+
+def objection_class(text: str) -> str | None:
+    for name, rx in OBJECTION_CLASSES.items():
+        if rx.search(text or ""):
+            return name
+    return None
 
 
 def parse_prepared_answers(text: str) -> list[dict]:
