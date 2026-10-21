@@ -87,7 +87,7 @@ from backend import library as doc_library
 from backend import script_follow
 from backend import prepare as prepare_mod
 from backend import readiness as readiness_mod
-from backend.userdata import get_userdata
+from backend.userdata import COMPANY_ID, get_userdata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -854,18 +854,45 @@ async def _script_lost(state: SessionState) -> None:
         state.script_lost_pending = False
 
 
+_company_cache: dict = {"version": None, "library": None}
+
+
+def _company_library():
+    """Search index over the admin-managed company knowledge hub (rebuilt only when it changes)."""
+    store = get_userdata()
+    version = store.company_version()
+    if version[0] == 0:
+        return None
+    if _company_cache["version"] != version:
+        docs = [{**d, "title": f"{d['venture']} · {d['title']}" if d.get("venture") else d["title"]}
+                for d in store.get_docs(COMPANY_ID)]
+        _company_cache.update(version=version, library=doc_library.Library(docs))
+    return _company_cache["library"]
+
+
+def _knowledge_hits(state: SessionState, question: str) -> tuple[list[dict], bool]:
+    """The presenter's own documents first; the company hub only when theirs have nothing. (hits, any_library)"""
+    company = getattr(state, "company_library", None)
+    if not state.library and not company:
+        return [], False
+    hits = state.library.search(question) if state.library else []
+    if not hits and company:
+        hits = [{**h, "title": f"Company: {h['title']}"} for h in company.search(question)]
+    return hits, True
+
+
 def _ground_in_library(state: SessionState, question: str, *, store_key="q") -> str:
-    """Prompt text with the presenter's own documents that match the question (and a "don't invent" rule)."""
-    if not state.library:
+    """Prompt text with matching facts from the presenter's documents, else the company hub (plus a "don't invent" rule)."""
+    hits, any_library = _knowledge_hits(state, question)
+    if not any_library:
         return ""
-    hits = state.library.search(question)
     if store_key:
         state.hint_sources[question] = ({"sources": doc_library.source_titles(hits)} if hits
                                         else {"not_in_notes": True})
     if hits:
         return "\n\n" + doc_library.facts_block(hits) + "\nUse these facts; never state a figure that is not in them."
-    return ("\n\nThe presenter's documents contain nothing about this. Do NOT state any number, price or customer name; "
-            "make one of the points \"confirm the exact figure, then follow up\".")
+    return ("\n\nNeither the presenter's documents nor the company knowledge hub say anything about this. Do NOT state any "
+            "number, price or customer name; make one of the points \"confirm the exact figure, then follow up\".")
 
 
 def _compute_script_result(state: SessionState) -> None:
@@ -965,6 +992,49 @@ async def api_add_doc(request: Request, file: UploadFile | None = File(None)):
 @app.delete("/api/library/{doc_id}")
 async def api_delete_doc(doc_id: str, request: Request):
     if not get_userdata().delete_doc(_request_user_scope(request), doc_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"ok": True}
+
+
+def _require_admin(request: Request) -> str:
+    """Company knowledge hub writes: admins only (with accounts off — one-laptop pilot — everyone is the admin)."""
+    user_id = _request_user_scope(request)
+    if AUTH_ACCOUNTS and not accounts.is_admin(getattr(request.state, "user", None)):
+        raise HTTPException(status_code=403, detail="Only admins can change the company knowledge hub.")
+    return user_id
+
+
+@app.get("/api/company")
+async def api_company_list(request: Request):
+    _request_user_scope(request)
+    can_edit = (not AUTH_ACCOUNTS) or accounts.is_admin(getattr(request.state, "user", None))
+    return {"docs": get_userdata().list_docs(COMPANY_ID), "can_edit": can_edit}
+
+
+@app.post("/api/company")
+async def api_company_add(request: Request, file: UploadFile | None = File(None), venture: str = ""):
+    """Admin: add a deck / document (.pdf .pptx .docx .txt .md, multipart with ?venture=) or JSON {title, text, venture}."""
+    _require_admin(request)
+    try:
+        if file is not None:
+            data = await file.read(15_000_001)
+            if len(data) > 15_000_000:
+                raise ValueError("That file is over 15 MB.")
+            name = (file.filename or "document").strip()
+            text = doc_library.extract_text(name, data)
+            title, venture = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name), venture
+        else:
+            body = await request.json()
+            title, text, venture = str(body.get("title") or ""), str(body.get("text") or ""), str(body.get("venture") or "")
+        return get_userdata().add_doc(COMPANY_ID, title, text, venture)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/company/{doc_id}")
+async def api_company_delete(doc_id: str, request: Request):
+    _require_admin(request)
+    if not get_userdata().delete_doc(COMPANY_ID, doc_id):
         raise HTTPException(status_code=404, detail="Document not found")
     return {"ok": True}
 
@@ -1643,6 +1713,7 @@ async def websocket_endpoint(websocket: WebSocket):
     )
     live_request_queue = LiveRequestQueue()
     state.live_queue = live_request_queue
+    state.company_library = _company_library()
     if transcription_enabled():
         state.user_stt = LiveTranscriber(
             "user", _stt_callback(state, "user"), session_id=session_id, on_status=_stt_status_callback(state, "user"),
@@ -2536,7 +2607,7 @@ async def _run_objection_card(state: SessionState, quote: str) -> None:
     card = coach_extras.parse_objection(reply, state.prepared_answers)
     if not card:
         return
-    hits = state.library.search(quote) if state.library else []
+    hits, _ = _knowledge_hits(state, quote)
     card = {"ts": round(state.duration_seconds(), 1), "quote": quote[:200], **card,
             **({"sources": doc_library.source_titles(hits)} if hits else {})}
     state.objections.append(card)

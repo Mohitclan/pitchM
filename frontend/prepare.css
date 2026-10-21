@@ -34,3 +34,9 @@
 @media (max-width: 760px) { .pp-grid, .pp-two { grid-template-columns: 1fr; } }
 
 .pp-result-head .mt-btn { white-space: nowrap; }
+
+.pp-h3 { font-size: 14px; margin: 14px 0 8px; }
+.pp-h3 em { font-style: normal; color: var(--muted); font-weight: 500; }
+.pp-company-list { display: grid; gap: 14px; margin-bottom: 8px; }
+.pp-company-list:empty::before { content: 'No company documents yet.'; color: var(--muted); font-size: 13px; }
+.pp-venture { font-family: var(--font-d); font-weight: 700; font-size: 15px; margin: 0 0 6px; }

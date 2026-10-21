@@ -111,7 +111,7 @@ def test_ground_in_library_marks_unknowns():
     st.library = library.Library(DOCS)
     assert "Pricing sheet" in m._ground_in_library(st, "what does it cost per clinic")
     assert st.hint_sources["what does it cost per clinic"]["sources"] == ["Pricing sheet"]
-    assert "nothing about this" in m._ground_in_library(st, "tell me about your football team")
+    assert "Do NOT state any number" in m._ground_in_library(st, "tell me about your football team")
     assert st.hint_sources["tell me about your football team"] == {"not_in_notes": True}
 
 
@@ -132,3 +132,49 @@ def test_endpoints_isolate_users(tmp_path, monkeypatch):
     assert c.post("/api/library", files={"file": ("x.exe", b"MZ")}, headers=a).status_code == 400
     assert c.get("/api/library", headers=b).json()["docs"] == []
     assert c.post("/api/prepare", json={"material": "short"}, headers=a).status_code == 400
+
+
+def test_office_files_are_read():
+    import io, zipfile
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        z.writestr("ppt/slides/slide2.xml", "<s><a:p><a:r><a:t>Security: encrypted at rest</a:t></a:r></a:p></s>")
+        z.writestr("ppt/slides/slide1.xml", "<s><a:p><a:r><a:t>Billing Hub</a:t></a:r></a:p><a:p><a:r><a:t>Costs 49 dollars</a:t></a:r></a:p></s>")
+    text = library.extract_text("deck.pptx", b.getvalue())
+    assert text.index("Slide 1") < text.index("Slide 2") and "Costs 49 dollars" in text
+    with pytest.raises(ValueError):
+        library.extract_text("bad.pptx", b"not a zip")
+
+
+def test_company_hub_is_admin_only_and_used_as_fallback(tmp_path, monkeypatch):
+    import backend.main as m
+    from backend import db
+    from backend.session_state import SessionState
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(db, "LOCAL_DB_PATH", str(tmp_path / "c.db"))
+    monkeypatch.setattr(m, "_company_cache", {"version": None, "library": None})
+    c = TestClient(m.app)
+    a = {"x-user-id": "alice"}
+    r = c.post("/api/company", json={"title": "Pricing 2026", "venture": "Billing Hub",
+                                     "text": "Billing Hub costs 49 dollars per clinic per month. Annual plans get two months free."}, headers=a)
+    assert r.status_code == 200 and r.json()["venture"] == "Billing Hub"
+    listing = c.get("/api/company", headers={"x-user-id": "bob"}).json()
+    assert len(listing["docs"]) == 1 and listing["can_edit"]            # accounts off: everyone is the admin
+    # a member (accounts on) can read but not write
+    monkeypatch.setattr(m, "AUTH_ACCOUNTS", True)
+    monkeypatch.setattr(m.accounts, "user_from_request", lambda req: {"user_id": "u2", "role": "member", "email": "b@x.com"})
+    member = TestClient(m.app)
+    assert member.get("/api/company").json()["can_edit"] is False
+    assert member.post("/api/company", json={"title": "x", "text": "y" * 40}).status_code == 403
+    assert member.delete(f"/api/company/{listing['docs'][0]['doc_id']}").status_code == 403
+    monkeypatch.setattr(m, "AUTH_ACCOUNTS", False)
+    # live answers: own documents first, company hub as the fallback, "not in notes" if neither has it
+    st = SessionState(session_id="s", user_id="alice")
+    st.company_library = m._company_library()
+    assert st.company_library
+    prompt = m._ground_in_library(st, "what does it cost per clinic")
+    assert "Billing Hub · Pricing 2026" in prompt
+    assert st.hint_sources["what does it cost per clinic"]["sources"] == ["Company: Billing Hub · Pricing 2026"]
+    st.library = library.Library([{"doc_id": "p", "title": "Client notes", "text": "Priya wants the price per clinic in rupees and a pilot."}])
+    assert st.hint_sources.clear() or "Client notes" in m._ground_in_library(st, "price per clinic")      # own layer wins
+    assert "Neither" in m._ground_in_library(st, "tell me about your football team")

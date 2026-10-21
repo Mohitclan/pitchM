@@ -16,6 +16,9 @@ from pathlib import Path
 from backend import library, script_follow
 
 MAX_SCRIPTS = 40
+COMPANY_ID = "__company__"          # docs owned by this id are the shared company knowledge hub
+COMPANY_MAX_DOCS = 300
+COMPANY_MAX_TOTAL_CHARS = 3_000_000
 
 
 def _s(value, limit: int) -> str:
@@ -87,6 +90,8 @@ class UserDataStore:
             CREATE INDEX IF NOT EXISTS idx_docs_user ON docs (user_id, created_at DESC);
             """
         )
+        if "venture" not in {r[1] for r in self._conn.execute("PRAGMA table_info(docs)")}:
+            self._conn.execute("ALTER TABLE docs ADD COLUMN venture TEXT NOT NULL DEFAULT ''")
         self._conn.commit()
 
     def _run(self, sql: str, params: tuple = (), *, write: bool = False) -> list[tuple]:
@@ -140,28 +145,38 @@ class UserDataStore:
 
     # ── documents ───────────────────────────────────────────────────────────
     def list_docs(self, user_id: str) -> list[dict]:
-        return [{"doc_id": d, "title": t, "created_at": c, "size": n}
-                for d, t, c, n in self._run("SELECT doc_id, title, created_at, size FROM docs WHERE user_id = ? ORDER BY created_at DESC", (user_id,))]
+        return [{"doc_id": d, "title": t, "created_at": c, "size": n, "venture": v}
+                for d, t, c, n, v in self._run(
+                    "SELECT doc_id, title, created_at, size, venture FROM docs WHERE user_id = ? ORDER BY venture, created_at DESC", (user_id,))]
 
-    def add_doc(self, user_id: str, title: str, text: str) -> dict:
+    def add_doc(self, user_id: str, title: str, text: str, venture: str = "") -> dict:
         title = _s(title, 80) or "Untitled document"
-        text = library.clean_text(text)[: library.MAX_DOC_CHARS]
+        venture = _s(venture, 60)
+        company = user_id == COMPANY_ID
+        text = library.clean_text(text)[: (150_000 if company else library.MAX_DOC_CHARS)]
         if len(text) < 20:
             raise ValueError("That document is empty or too short.")
         docs = self.list_docs(user_id)
-        if len(docs) >= library.MAX_DOCS:
-            raise ValueError(f"You can keep up to {library.MAX_DOCS} documents. Delete one first.")
-        if sum(d["size"] for d in docs) + len(text) > library.MAX_TOTAL_CHARS:
-            raise ValueError("Your documents are over the size limit. Delete one first.")
+        if len(docs) >= (COMPANY_MAX_DOCS if company else library.MAX_DOCS):
+            raise ValueError("The library is full. Delete a document first." if company
+                             else f"You can keep up to {library.MAX_DOCS} documents. Delete one first.")
+        if sum(d["size"] for d in docs) + len(text) > (COMPANY_MAX_TOTAL_CHARS if company else library.MAX_TOTAL_CHARS):
+            raise ValueError("The library is over its size limit. Delete a document first." if company
+                             else "Your documents are over the size limit. Delete one first.")
         doc_id = f"d_{secrets.token_hex(6)}"
         now = int(time.time())
-        self._run("INSERT INTO docs (doc_id, user_id, title, created_at, size, text) VALUES (?, ?, ?, ?, ?, ?)",
-                  (doc_id, user_id, title, now, len(text), text), write=True)
-        return {"doc_id": doc_id, "title": title, "created_at": now, "size": len(text)}
+        self._run("INSERT INTO docs (doc_id, user_id, title, created_at, size, text, venture) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (doc_id, user_id, title, now, len(text), text, venture), write=True)
+        return {"doc_id": doc_id, "title": title, "created_at": now, "size": len(text), "venture": venture}
 
     def get_docs(self, user_id: str, doc_ids: list[str] | None = None) -> list[dict]:
-        rows = self._run("SELECT doc_id, title, text FROM docs WHERE user_id = ? ORDER BY created_at", (user_id,))
-        return [{"doc_id": d, "title": t, "text": x} for d, t, x in rows if doc_ids is None or d in doc_ids]
+        rows = self._run("SELECT doc_id, title, text, venture FROM docs WHERE user_id = ? ORDER BY created_at", (user_id,))
+        return [{"doc_id": d, "title": t, "text": x, "venture": v} for d, t, x, v in rows if doc_ids is None or d in doc_ids]
+
+    def company_version(self) -> tuple:
+        """Changes whenever the company library changes (used to cache its search index)."""
+        row = self._run("SELECT COUNT(*), COALESCE(SUM(size), 0), COALESCE(MAX(created_at), 0) FROM docs WHERE user_id = ?", (COMPANY_ID,))[0]
+        return tuple(row)
 
     def delete_doc(self, user_id: str, doc_id: str) -> bool:
         before = len(self._run("SELECT 1 FROM docs WHERE doc_id = ? AND user_id = ?", (doc_id, user_id)))

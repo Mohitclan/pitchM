@@ -76,9 +76,49 @@ def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP)
     return [c[: size * 2] for c in chunks]
 
 
+def _office_text(data: bytes, kind: str) -> str:
+    """Text from a .pptx (one block per slide, in order) or .docx, read straight from the zip's XML."""
+    import html
+    import io
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("That file could not be read.") from exc
+    with zf:
+        if sum(i.file_size for i in zf.infolist()) > 80_000_000:
+            raise ValueError("That file is too large to read.")
+        if kind == "pptx":
+            slides = sorted((n for n in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
+                            key=lambda n: int(re.search(r"(\d+)\.xml", n).group(1)))
+            parts = []
+            for i, n in enumerate(slides, 1):
+                xml = zf.read(n).decode("utf-8", "ignore")
+                paras = [" ".join(html.unescape(t) for t in re.findall(r"<a:t>([^<]*)</a:t>", para)).strip()
+                         for para in re.findall(r"<a:p>.*?</a:p>|<a:p [^>]*>.*?</a:p>", xml, flags=re.S)]
+                body = "\n".join(p for p in paras if p)
+                if body:
+                    parts.append(f"Slide {i}\n{body}")
+            text = "\n\n".join(parts)
+        else:
+            if "word/document.xml" not in zf.namelist():
+                raise ValueError("That file could not be read.")
+            xml = zf.read("word/document.xml").decode("utf-8", "ignore")
+            paras = [" ".join(html.unescape(t) for t in re.findall(r"<w:t[^>]*>([^<]*)</w:t>", para)).strip()
+                     for para in re.findall(r"<w:p[ >].*?</w:p>", xml, flags=re.S)]
+            text = "\n".join(p for p in paras if p)
+    if len(text.strip()) < 20:
+        raise ValueError("No text found in that file (is it all images?). Paste the text instead.")
+    return clean_text(text)
+
+
 def extract_text(filename: str, data: bytes) -> str:
-    """Text out of an uploaded file: .txt / .md / .csv / .pdf. Raises ValueError for anything else."""
+    """Text out of an uploaded file: .pdf / .pptx / .docx / .txt / .md / .csv. Raises ValueError for anything else."""
     name = (filename or "").lower()
+    if name.endswith(".pptx"):
+        return _office_text(data, "pptx")
+    if name.endswith(".docx"):
+        return _office_text(data, "docx")
     if name.endswith(".pdf"):
         try:
             import fitz  # PyMuPDF
@@ -98,7 +138,7 @@ def extract_text(filename: str, data: bytes) -> str:
                 return clean_text(data.decode(enc))
             except (UnicodeDecodeError, UnicodeError):
                 continue
-    raise ValueError("Use a .pdf, .txt or .md file, or paste the text.")
+    raise ValueError("Use a .pdf, .pptx, .docx, .txt or .md file, or paste the text.")
 
 
 class Library:

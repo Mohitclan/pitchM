@@ -269,7 +269,8 @@ class SessionState:
     script_target_minutes: int = 0
     script_follower: object = None       # ScriptFollower | None
     script_lost_pending: bool = False
-    library: object = None               # Library | None
+    library: object = None               # Library | None (the presenter's own documents)
+    company_library: object = None       # Library | None (admin-managed company knowledge hub)
     hint_sources: dict = field(default_factory=dict)   # question -> {"sources": [...], "not_in_notes": bool}
     script_result: dict = field(default_factory=dict)
     readiness: dict = field(default_factory=dict)

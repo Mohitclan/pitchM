@@ -77,10 +77,10 @@
       </section>
       <section class="mt-card pp-card">
         <h2 class="pp-h2">My documents</h2>
-        <p class="pp-hint">Pricing sheets, FAQs, case studies. Answers in a live call use these and say where a fact came from. PDF, TXT or MD, up to 5 MB each.</p>
+        <p class="pp-hint">Pricing sheets, FAQs, case studies. Answers in a live call use these and say where a fact came from. PDF, PowerPoint, Word, TXT or MD, up to 5 MB each. These are for this call or client; company-wide facts live in the hub below.</p>
         <ul id="pp-docs" class="pp-list"></ul>
         <div class="pp-add">
-          <input id="pp-file" type="file" accept=".pdf,.txt,.md,.markdown,.csv" />
+          <input id="pp-file" type="file" accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" />
           <details><summary>or paste text</summary>
             <input id="pp-doc-title" type="text" maxlength="80" placeholder="Title, e.g. Pricing sheet" />
             <textarea id="pp-doc-text" rows="5" placeholder="Paste the document text"></textarea>
@@ -89,6 +89,27 @@
         </div>
       </section>
     </div>
+
+    <section class="mt-card pp-card" id="pp-company">
+      <h2 class="pp-h2">Company knowledge hub</h2>
+      <p class="pp-hint">The shared source of truth for every venture and product: pricing, features, decks, FAQs. During a call or rehearsal, if your own documents don't cover what the client asks, the coach answers from here and says which document it used.
+        <span id="pp-company-role"></span></p>
+      <div id="pp-company-list" class="pp-company-list"></div>
+      <div id="pp-company-admin" class="pp-add hidden">
+        <h3 class="pp-h3">Add to the hub <em>(admin)</em></h3>
+        <div class="pp-grid">
+          <label class="mt-field"><span>Venture / product</span>
+            <input id="pp-venture" type="text" maxlength="60" list="pp-ventures" placeholder="Billing Hub" /><datalist id="pp-ventures"></datalist></label>
+          <label class="mt-field"><span>Deck or document</span>
+            <input id="pp-company-file" type="file" multiple accept=".pdf,.pptx,.docx,.txt,.md,.markdown,.csv" /></label>
+        </div>
+        <details><summary>or paste text</summary>
+          <input id="pp-company-title" type="text" maxlength="80" placeholder="Title, e.g. Pricing 2026" />
+          <textarea id="pp-company-text" rows="5" placeholder="Paste the text"></textarea>
+          <button id="pp-company-add" type="button" class="mt-btn mt-btn-ghost">Add to hub</button></details>
+        <span id="pp-company-status" class="pp-status" role="status"></span>
+      </div>
+    </section>
   </main>
 
   <script src="/static/tester.js?v=20261022d"></script>

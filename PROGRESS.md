@@ -498,3 +498,18 @@ First slice of `docs/PRODUCT_PLAN.md` (A + B + C + F), built for sales and clien
 - Tests: `tests/test_scripts_library.py` (10). 116 passing. Real-server check on a temporary port: WS
   `script` → `script_loaded`, `script_goto` → `script_pos`, `script_lost` → `script_where`; pages render; picking a
   script fills the brief. Not yet tested with a live voice or a real Opus draft (costs credits).
+
+## Company knowledge hub — 2026-10-22
+
+A shared, admin-managed library behind each person's own documents (`/prepare`, section "Company knowledge hub").
+- Docs owned by the reserved id `__company__` in the same `docs` table (new `venture` column, auto-migrated).
+  Grouped by venture/product. Admins add (multi-file upload or paste) and delete; everyone signed in can read the
+  list. `GET/POST/DELETE /api/company`; writes need an admin (`accounts.is_admin`; with accounts off, e.g. the
+  one-laptop pilot, everyone counts as admin). Uploads: .pdf .pptx .docx .txt .md .csv up to 15 MB (decks and Word
+  files are read from the zip XML, no new dependency); the same formats now work for personal documents.
+- Live answers: the presenter's own documents are searched first; only when they have nothing does the answer use
+  the hub, citing "Company: Venture · Title" (card shows "From the company hub: …"). Neither has it → "Not in your
+  notes or the company hub", and the prompt forbids inventing figures. The hub's search index is cached and rebuilt
+  only when it changes (`_company_library`, `UserDataStore.company_version`). Loaded for every session, no toggle.
+- Not done: Prepare me does not read the hub yet; no per-venture filter during a call; no version history.
+- Before a shared deployment: sign-up is open, so anyone who can create an account can read the hub.

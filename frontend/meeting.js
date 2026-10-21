@@ -999,8 +999,8 @@
         <${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'} class="pm-ac-lines${c.kind === 'catchup' || c.kind === 'ask' ? ' plain' : ''}">
           ${c.lines.map((l) => `<li>${esc(l)}</li>`).join('')}
         </${c.kind === 'catchup' || c.kind === 'ask' ? 'ul' : 'ol'}>
-        ${c.notInNotes ? '<div class="pm-ac-src warn">Not in your notes — offer to confirm the figure and follow up.</div>'
-          : (c.sources && c.sources.length ? `<div class="pm-ac-src">From your notes: ${esc(c.sources.join(', '))}</div>` : '')}
+        ${c.notInNotes ? '<div class="pm-ac-src warn">Not in your notes or the company hub — offer to confirm the figure and follow up.</div>'
+          : (c.sources && c.sources.length ? `<div class="pm-ac-src">From ${c.sources[0].startsWith('Company:') ? 'the company hub' : 'your notes'}: ${esc(c.sources.join(', ').replace(/Company: /g, ''))}</div>` : '')}
       </div>`).join('');
 
     questions.dataset.empty = "Questions the client asks are listed here, so you can answer an earlier one. (Needs the client's audio shared.)";
