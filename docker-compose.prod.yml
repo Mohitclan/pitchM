@@ -1,0 +1,50 @@
+# Production stack: the app (not exposed to the internet) behind Caddy, which gets a free HTTPS certificate.
+# Dev is unchanged: `docker compose up -d` still uses docker-compose.yml only.
+#
+#   cp .env.production.example .env      # then fill in the values
+#   DOMAIN=pitchlight.example.com docker compose -f docker-compose.prod.yml up -d --build
+services:
+  pitchmirror:
+    build: .
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    environment:
+      LOCAL_DB_PATH: /app/data/pitchmirror.db
+    volumes:
+      - pitchmirror_data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - pitchmirror
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN, e.g. DOMAIN=pitchlight.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+volumes:
+  pitchmirror_data:
+  caddy_data:
+  caddy_config:

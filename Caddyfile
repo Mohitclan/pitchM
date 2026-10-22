@@ -1,0 +1,8 @@
+# HTTPS certificate is requested and renewed automatically for {$DOMAIN}.
+# WebSocket upgrades (/ws) pass through, and Caddy sets no idle timeout, so long meetings are fine.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy pitchmirror:8080 {
+		flush_interval -1
+	}
+}
