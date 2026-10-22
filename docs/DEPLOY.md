@@ -15,5 +15,6 @@
 Notes
 - Data (accounts, scripts, documents, history) lives in the Docker volume `pitchmirror_data`. `docker compose down -v` deletes it.
 - Run exactly **one** copy of the app; live-call state is in memory. Deploy when nobody is in a call.
+- Sign-up is open to any email (set `ALLOWED_EMAIL_DOMAINS` to restrict it). Anyone who finds the address can create an account, so share the link only with your team.
 - Limits count each signed-in person, not the network address, so an office sharing one IP is fine.
 - Local development is unchanged: `docker compose up -d --build` uses `docker-compose.yml` on port 8080.
