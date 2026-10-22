@@ -103,7 +103,13 @@
 .mt-brief-help { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--muted); }
 @media (max-width: 720px) { .mt-brief-grid { grid-template-columns: minmax(0, 1fr); } }
 
-.mt-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 18px; margin: 6px 0 4px; }
+.mt-panels { display: block; margin: 0 0 4px; }
+.mt-panels > .mt-points-panel:not(.is-tab-on) { display: none; }
+.mt-tabs { display: flex; gap: 6px; margin: 6px 0 8px; flex-wrap: wrap; }
+.mt-tabs:empty { display: none; }
+.mt-tab { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted, inherit); }
+.mt-tab.is-on { background: var(--accent, #4f46e5); border-color: var(--accent, #4f46e5); color: #fff; }
+.mt-panels > .mt-points-panel .mt-label { display: none; }
 .mt-points-panel { margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .mt-points-count { font-weight: 700; color: var(--accent); text-transform: none; letter-spacing: 0; }
 .mt-points-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }

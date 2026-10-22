@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/style.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/style.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261025a" />
 </head>
 <body>
   <div id="app">
@@ -85,6 +85,12 @@
           <div id="partner-cards" class="partner-cards" role="radiogroup" aria-label="Practice with"></div>
           </div>
           <label class="config-field">
+            <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
+            <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
+              autocomplete="off" placeholder="Billing Hub pitch" />
+            <datalist id="pitch-names"></datalist>
+          </label>
+          <label class="config-field">
             <span class="config-label">Script <em>(follows your voice — <a href="/prepare" target="_blank" rel="noopener">make one</a>)</em></span>
             <select id="script-select" class="config-select"><option value="">No script</option></select>
           </label>
@@ -132,12 +138,6 @@
               <option value="live">Live — tips, checklist and advice while I talk</option>
               <option value="end">Only at the end — no interruptions</option>
             </select>
-          </label>
-          <label class="config-field">
-            <span class="config-label">Pitch name <em>(optional — saves this run as a new version)</em></span>
-            <input id="pitch-name" class="config-select" type="text" maxlength="80" list="pitch-names"
-              autocomplete="off" placeholder="Billing Hub pitch" />
-            <datalist id="pitch-names"></datalist>
           </label>
           <label class="config-field" id="pitch-points-field">
             <span class="config-label">Key points to hit <em>(one per line)</em></span>
@@ -379,14 +379,14 @@
     </div>
   </div>
 
-  <script src="/static/js/common.js?v=20261024a"></script>
-  <script src="/static/js/nav.js?v=20261024a"></script>
-  <script src="/static/js/tester.js?v=20261024a"></script>
-  <script src="/static/js/audio-leveler.js?v=20261024a"></script>
-  <script src="/static/js/gaze.js?v=20261024a"></script>
-  <script src="/static/js/rehearse.js?v=20261024a"></script>
-  <script src="/static/js/script-view.js?v=20261024a"></script>
-  <script src="/static/js/app.js?v=20261024a"></script>
-  <script src="/static/js/practice-ui.js?v=20261024a"></script>
+  <script src="/static/js/common.js?v=20261025a"></script>
+  <script src="/static/js/nav.js?v=20261025a"></script>
+  <script src="/static/js/tester.js?v=20261025a"></script>
+  <script src="/static/js/audio-leveler.js?v=20261025a"></script>
+  <script src="/static/js/gaze.js?v=20261025a"></script>
+  <script src="/static/js/rehearse.js?v=20261025a"></script>
+  <script src="/static/js/script-view.js?v=20261025a"></script>
+  <script src="/static/js/app.js?v=20261025a"></script>
+  <script src="/static/js/practice-ui.js?v=20261025a"></script>
 </body>
 </html>

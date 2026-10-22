@@ -7,11 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/tokens.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/components.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/bubble.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/meeting.css?v=20261024a" />
-  <link rel="stylesheet" href="/static/css/tester.css?v=20261024a" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/bubble.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/meeting.css?v=20261025a" />
+  <link rel="stylesheet" href="/static/css/tester.css?v=20261025a" />
 </head>
 <body class="pl-page mt-page">
 
@@ -153,7 +153,8 @@
 
       <section id="mt-guide" class="mt-guide hidden" aria-live="polite"></section>
 
-      <div class="mt-panels">
+      <div class="mt-tabs" id="mt-tabs" role="tablist" aria-label="Meeting helpers"></div>
+      <div class="mt-panels" id="mt-panels">
       <div id="mt-points-panel" class="mt-points-panel hidden">
         <div class="mt-label">Points to cover <span id="mt-points-count" class="mt-points-count"></span></div>
         <ul id="mt-points-list" class="mt-points-list"></ul>
@@ -310,14 +311,15 @@
 
   <video id="mt-video" autoplay muted playsinline class="mt-hidden-video"></video>
 
-  <script src="/static/js/common.js?v=20261024a"></script>
-  <script src="/static/js/nav.js?v=20261024a"></script>
-  <script src="/static/js/tester.js?v=20261024a"></script>
-  <script src="/static/js/audio-leveler.js?v=20261024a"></script>
-  <script src="/static/js/gaze.js?v=20261024a"></script>
-  <script src="/static/js/rehearse.js?v=20261024a"></script>
-  <script src="/static/js/script-view.js?v=20261024a"></script>
-  <script src="/static/js/demo-meeting.js?v=20261024a"></script>
-  <script src="/static/js/meeting.js?v=20261024a"></script>
+  <script src="/static/js/common.js?v=20261025a"></script>
+  <script src="/static/js/nav.js?v=20261025a"></script>
+  <script src="/static/js/tester.js?v=20261025a"></script>
+  <script src="/static/js/audio-leveler.js?v=20261025a"></script>
+  <script src="/static/js/gaze.js?v=20261025a"></script>
+  <script src="/static/js/rehearse.js?v=20261025a"></script>
+  <script src="/static/js/script-view.js?v=20261025a"></script>
+  <script src="/static/js/demo-meeting.js?v=20261025a"></script>
+  <script src="/static/js/meeting-tabs.js?v=20261025a"></script>
+  <script src="/static/js/meeting.js?v=20261025a"></script>
 </body>
 </html>
