@@ -17,12 +17,12 @@
       return `<button type="button" class="mt-tab${p.id === chosen ? ' is-on' : ''}" role="tab" data-p="${p.id}" aria-selected="${p.id === chosen}">${NAMES[p.id]} ${n}</button>`;
     }).join('');
     if (tabs.innerHTML !== html) tabs.innerHTML = html;
-    if (live.length === 1) live[0].classList.add('is-tab-on');
   }
   tabs.addEventListener('click', (e) => {
     const b = e.target.closest('.mt-tab');
     if (b) { chosen = b.dataset.p; refresh(); }
   });
-  new MutationObserver(refresh).observe(box, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ['class'] });
+  const mo = new MutationObserver(() => { refresh(); mo.takeRecords(); });   // our own class changes must not re-trigger us
+  mo.observe(box, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ['class'] });
   refresh();
 })();
