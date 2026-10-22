@@ -633,3 +633,17 @@ Goal: fewer buttons and sections per screen, one look and one navigation everywh
   page (`js/landing-motion.js`): staggered hero entrance, film drift and copy fade on scroll, one-time reveals for
   sections. Content is visible without JS; `.js-anim` hides it only when motion is allowed and removes itself after 4 s
   if the motion script did not start.
+
+## 2026-10-27 — Landing recreated from the reference image
+- **Header** (landing only): dark bar with star logo, Home · Features · How it works, Sign in + Get started (`js/nav.js`
+  landing branch; other pages unchanged). There is no pricing page, so no Pricing link.
+- **Hero**: dark navy hero, eyebrow "Your private AI copilot for client calls", "Be ready for every question.", two CTAs
+  (same destinations as before: sign-up / Home / meeting depending on account state), three benefits, curved light
+  ribbon (SVG), scroll cue. The product demonstration is real HTML/CSS (no AI image): meeting window with the client
+  question, a generic silhouette (SVG, no real person), and the assistant panel using real product tabs (Answers,
+  Questions, Script), a "Say this" answer with its source and a talking point. Demo content only.
+- **"From preparation to response, in seconds."** light section (`#how`) with Prepare / Listen / Get guidance and the
+  12 s film (lazy: loads when scrolled into view, poster only for reduced motion / Save-Data; `js/landing.js`).
+  The old three-step section and the hero film were replaced; `#features` keeps the six benefits.
+- **GSAP** (`js/landing-motion.js`): hero copy stagger, window then assistant panel then cards, slow drift of the
+  background light, demo lifts on scroll, section reveals, steps light up in turn. Reduced motion: none of it runs.

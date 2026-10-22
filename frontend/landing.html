@@ -8,37 +8,106 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@10..48,500;10..48,700;10..48,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/tokens.css?v=20261026d" />
-  <link rel="stylesheet" href="/static/css/components.css?v=20261026d" />
-  <link rel="stylesheet" href="/static/css/landing.css?v=20261026d" />
-  <link rel="preload" as="image" href="/static/media/hero-poster.jpg?v=20261026d" fetchpriority="high" />
+  <link rel="stylesheet" href="/static/css/tokens.css?v=20261027e" />
+  <link rel="stylesheet" href="/static/css/components.css?v=20261027e" />
+  <link rel="stylesheet" href="/static/css/landing.css?v=20261027e" />
   <script>try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.documentElement.classList.add("js-anim");setTimeout(function(){if(!window.__ldMotion)document.documentElement.classList.remove("js-anim")},4000)}catch(e){}</script>
 </head>
 <body class="pl-page ld-body">
   <header class="pl-header" data-page="landing"></header>
 
   <main>
-    <!-- HERO: the film (real product flow, silent, looping) sits behind the copy on desktop and below it on phones -->
+    <!-- HERO -->
     <section class="ld-hero" id="hero">
-      <div class="ld-film" aria-hidden="true">
-        <div class="ld-film-inner">
-          <img class="ld-film-poster" src="/static/media/hero-poster.jpg?v=20261026d" alt="" width="1600" height="900" fetchpriority="high" decoding="async" />
-          <video class="ld-film-video" id="ld-video" muted loop playsinline preload="none" tabindex="-1" disablepictureinpicture disableremoteplayback></video>
-        </div>
+      <div class="ld-bg" aria-hidden="true">
+        <i class="ld-aura a"></i><i class="ld-aura b"></i><i class="ld-aura c"></i>
+        <svg class="ld-ribbon" viewBox="0 0 1440 300" preserveAspectRatio="none" focusable="false">
+          <defs>
+            <linearGradient id="rb1" x1="0" x2="1"><stop offset="0" stop-color="#3b63ff" stop-opacity="0"/><stop offset=".45" stop-color="#4f7bff" stop-opacity=".75"/><stop offset="1" stop-color="#9b6bff" stop-opacity=".9"/></linearGradient>
+            <linearGradient id="rb2" x1="0" x2="1"><stop offset="0" stop-color="#6d4cf5" stop-opacity="0"/><stop offset=".6" stop-color="#7b8cff" stop-opacity=".45"/><stop offset="1" stop-color="#c4a8ff" stop-opacity=".6"/></linearGradient>
+          </defs>
+          <path class="rb-a" d="M380 300C700 250 980 215 1440 70" fill="none" stroke="url(#rb1)" stroke-width="3"/>
+          <path class="rb-b" d="M520 300C820 262 1060 235 1440 110" fill="none" stroke="url(#rb2)" stroke-width="2"/>
+          <path d="M380 300C700 250 980 215 1440 70L1440 300Z" fill="url(#rb2)" opacity=".07"/>
+        </svg>
       </div>
       <div class="ld-wrap ld-hero-grid">
         <div class="ld-hero-copy">
-          <span class="ld-pill ld-reveal"><i></i> AI coach for sales and client calls</span>
-          <h1 class="ld-reveal">Walk into every client call <em>prepared.</em></h1>
-          <p class="ld-sub ld-reveal">Pitchlight drafts your script and answers, follows your voice while you talk, and quietly shows you exactly what to say when a client asks something hard. Only you can see it.</p>
+          <p class="ld-eyebrow-d ld-reveal">Your private AI copilot for client calls</p>
+          <h1 class="ld-reveal">Be ready for every <em>question.</em></h1>
+          <p class="ld-sub ld-reveal">Your talking points, answers, and client context — ready when the conversation gets difficult.</p>
           <div class="ld-cta ld-reveal" id="ld-cta">
-            <a class="pl-btn is-accent is-lg" id="ld-primary" href="/meeting">Try the practice meeting</a>
-            <a class="pl-btn is-ghost is-lg" href="#how">See how it works</a>
+            <a class="pl-btn is-accent is-lg" id="ld-primary" href="/meeting"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 5v14l11-7z"/></svg><span>Open Pitchlight</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+            <a class="pl-btn is-ghost is-lg" href="#how"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 5v14l11-7z"/></svg>See how it works</a>
           </div>
           <p class="ld-note ld-reveal" id="ld-note">Free to try · No credit card · Works in Chrome</p>
-          <ul class="ld-checks ld-reveal">
-            <li>Script that follows your voice</li><li>Answers from your own documents</li><li>Never invents a number</li>
+          <ul class="ld-benefits ld-reveal">
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><b>AI-Powered</b><span>Get real-time guidance during client calls.</span></li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><b>Document Grounded</b><span>Answers from your own documents.</span></li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><b>Private &amp; Discreet</b><span>Guidance visible to you, not your client.</span></li>
           </ul>
+        </div>
+
+        <!-- Product demonstration: built in HTML/CSS from real product wording (demo content: Northwind Dental / Billing Hub) -->
+        <div class="dm" role="img" aria-label="Example of Pitchlight during a client call: the client asks about price, and the assistant shows the answer from the company's own documents with its source.">
+          <div class="dm-frame ld-m">
+            <div class="dm-bar"><span class="dm-live"><i></i>Client Meeting</span><span class="dm-time">12:34</span><span class="dm-brand"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 2c.6 4.8 3.2 8 8 10-4.8 2-7.4 5.2-8 10-.6-4.8-3.2-8-8-10 4.8-2 7.4-5.2 8-10z" fill="currentColor"/></svg> Pitchlight</span></div>
+            <div class="dm-body">
+              <div class="dm-main">
+                <div class="dm-video">
+                  <svg class="dm-person" viewBox="0 0 520 330" preserveAspectRatio="xMidYMid slice" focusable="false">
+                    <defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2c3350"/><stop offset="1" stop-color="#121729"/></linearGradient>
+                    <linearGradient id="ps" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b5df0"/><stop offset="1" stop-color="#3a3f9a"/></linearGradient>
+                    <radialGradient id="ph" cx=".5" cy=".4"><stop offset="0" stop-color="#d8c4ff"/><stop offset="1" stop-color="#9c86f0"/></radialGradient></defs>
+                    <rect width="520" height="330" fill="url(#pg)"/>
+                    <circle cx="70" cy="70" r="46" fill="#4f6bff" opacity=".18"/><circle cx="430" cy="60" r="34" fill="#a78bfa" opacity=".16"/><circle cx="460" cy="250" r="56" fill="#2dd4bf" opacity=".1"/>
+                    <path d="M95 330c8-70 70-104 165-104s157 34 165 104z" fill="url(#ps)"/>
+                    <circle cx="260" cy="150" r="58" fill="url(#ph)"/>
+                  </svg>
+                  <div class="dm-q ld-m2"><small><i></i>Client</small>“How much does it cost per clinic, and is there a setup fee?”</div>
+                  <span class="dm-name">Priya Sharma · Northwind Dental</span>
+                </div>
+                <div class="dm-ctrls"><span class="dm-ctl"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg></span><span class="dm-ctl"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg></span><span class="dm-ctl"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><span class="dm-ctl"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></span><span class="dm-ctl dm-end"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14c5-5 13-5 18 0l-3 3-3-2v-2c-2-.7-4-.7-6 0v2l-3 2z"/></svg></span></div>
+              </div>
+              <aside class="dm-panel ld-m2">
+                <div class="dm-ph"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2c.6 4.8 3.2 8 8 10-4.8 2-7.4 5.2-8 10-.6-4.8-3.2-8-8-10 4.8-2 7.4-5.2 8-10z" fill="#8fa8ff"/></svg><b>Pitchlight</b><span class="dm-listen"><i></i>Listening</span></div>
+                <div class="dm-tabs"><span class="on">Answers</span><span>Questions <b>3</b></span><span>Script</span></div>
+                <div class="dm-card dm-ans ld-m3">
+                  <h4>Say this</h4>
+                  <p>Billing Hub is <b>49 dollars</b> per clinic per month, and with 22 clinics there is <b>no setup fee</b>. Annual plans get two months free.</p>
+                  <span class="dm-src"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Source: Pricing and FAQ · company hub</span>
+                </div>
+                <div class="dm-card dm-tp ld-m3">
+                  <h4>Talking point</h4>
+                  <p class="dm-tpq">Offer the free 30-day pilot.</p>
+                  <p class="dm-next"><b>Next in your script:</b> Month end close takes about six days.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+      <a class="ld-scroll" href="#how" aria-label="Scroll to explore"><span class="ld-mouse"><i></i></span>Scroll to explore</a>
+    </section>
+
+    <!-- FROM PREPARATION TO RESPONSE -->
+    <section class="ld-section ld-flow" id="how">
+      <div class="ld-wrap ld-flow-grid">
+        <div class="ld-flow-copy">
+          <p class="ld-eyebrow ld-reveal-s">See it in action</p>
+          <h2 class="ld-reveal-s">From preparation to response, <em>in seconds.</em></h2>
+          <p class="ld-lead ld-reveal-s">Pitchlight helps you stay ahead — before, during, and after every client call.</p>
+        </div>
+        <div class="ld-flowcard ld-reveal-s">
+          <ol class="ld-flowsteps">
+            <li><span class="ld-fi"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></span><div><b>1. Prepare</b><span>Generate scripts &amp; gather context</span></div></li>
+            <li><span class="ld-fi"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></span><div><b>2. Listen</b><span>AI follows the conversation</span></div></li>
+            <li><span class="ld-fi"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h4"/></svg></span><div><b>3. Get guidance</b><span>See relevant answers &amp; talking points</span></div></li>
+          </ol>
+          <div class="ld-flowfilm" id="ld-filmcard" aria-hidden="true">
+            <img class="ld-film-poster" src="/static/media/hero-poster.jpg?v=20261027e" alt="" width="1600" height="900" loading="lazy" decoding="async" />
+            <video class="ld-film-video" id="ld-video" muted loop playsinline preload="none" tabindex="-1" disablepictureinpicture disableremoteplayback></video>
+          </div>
         </div>
       </div>
     </section>
@@ -47,21 +116,8 @@
       <div class="ld-wrap"><span>Floats on top of</span><b>Zoom</b><b>Google Meet</b><b>Microsoft Teams</b><b>Webex</b><span class="ld-strip-end">Tips are text only. Nobody else sees them.</span></div>
     </section>
 
-    <!-- HOW -->
-    <section class="ld-section" id="how">
-      <div class="ld-wrap">
-        <p class="ld-eyebrow ld-reveal-s">How it works</p>
-        <h2 class="ld-reveal-s">Three steps. Then just go.</h2>
-        <div class="ld-steps">
-          <article class="ld-step ld-reveal-s"><div class="ld-ico ld-ico-blue">✍️</div><span class="ld-num">1</span><h3>Prepare</h3><p>Paste a product page or your notes. Get a script, the hardest questions with answers, objection replies and a cheat sheet, using only facts from your material.</p></article>
-          <article class="ld-step ld-reveal-s"><div class="ld-ico ld-ico-violet">🎯</div><span class="ld-num">2</span><h3>Practice</h3><p>A built-in client asks you 11 realistic questions out loud. You watch every feature work, with nothing at stake and nothing saved to your real data.</p></article>
-          <article class="ld-step ld-reveal-s"><div class="ld-ico ld-ico-green">🎧</div><span class="ld-num">3</span><h3>Meet</h3><p>A small notch floats on top of your call. It follows your script, answers client questions from your documents and company knowledge, and reviews the call afterwards.</p></article>
-        </div>
-      </div>
-    </section>
-
     <!-- FEATURES -->
-    <section class="ld-section ld-alt">
+    <section class="ld-section ld-alt" id="features">
       <div class="ld-wrap">
         <p class="ld-eyebrow ld-reveal-s">Built for the moment a client asks something hard</p>
         <h2 class="ld-reveal-s">Always know what to say next</h2>
@@ -97,30 +153,29 @@
 
   <footer class="ld-footer"><div class="ld-wrap"><span>◎ Pitchlight</span><span><a href="/guide">How it works</a> · <a href="/login">Sign in</a> · <a href="/login?signup=1">Create account</a></span></div></footer>
 
-  <script src="/static/js/nav.js?v=20261026d"></script>
-  <script src="/static/js/landing.js?v=20261026d"></script>
+  <script src="/static/js/nav.js?v=20261027e"></script>
+  <script src="/static/js/landing.js?v=20261027e"></script>
   <script defer src="/static/vendor/gsap.min.js"></script>
   <script defer src="/static/vendor/ScrollTrigger.min.js"></script>
-  <script defer src="/static/js/landing-motion.js?v=20261026d"></script>
+  <script defer src="/static/js/landing-motion.js?v=20261027e"></script>
   <script>
   // With accounts on: Sign in / Create account (or Go to Home) in the header and hero.
   fetch('/auth/me', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((info) => {
-    if (!info || info.mode !== 'accounts') return;
     const slot = document.getElementById('tester-slot');
+    if (!info || info.mode !== 'accounts') { slot.innerHTML = '<a class="pl-btn is-accent is-sm" href="/meeting">Get started</a>'; return; }
     const note = document.getElementById('ld-note');
     if (!info.user) {
-      slot.innerHTML = '<a class="pl-btn is-ghost is-sm" href="/login">Sign in</a> <a class="pl-btn is-accent is-sm" href="/login?signup=1">Create account</a>';
+      slot.innerHTML = '<a class="ld-signin" href="/login">Sign in</a> <a class="pl-btn is-accent is-sm" href="/login?signup=1">Get started</a>';
       document.getElementById('ld-primary').href = '/login?signup=1';
-      document.getElementById('ld-primary').textContent = 'Create your free account';
       document.getElementById('ld-final').href = '/login?signup=1';
       document.getElementById('ld-final').textContent = 'Create your free account';
       note.innerHTML = 'Already have an account? <a href="/login">Sign in</a> · No credit card';
       return;
     }
     slot.innerHTML = '<a class="pl-btn is-accent is-sm" href="/home">Go to Home</a>';
-    ['ld-primary', 'ld-final'].forEach((id) => { const el = document.getElementById(id); el.href = '/home'; el.textContent = 'Go to your Home'; });
+    ['ld-primary', 'ld-final'].forEach((id) => { const el = document.getElementById(id); el.href = '/home'; const sp = el.querySelector('span'); (sp || el).textContent = 'Go to your Home'; });
     note.textContent = 'Welcome back, ' + (info.user.name || '').split(' ')[0];
-  }).catch(() => {});
+  }).catch(() => { document.getElementById('tester-slot').innerHTML = '<a class="pl-btn is-accent is-sm" href="/meeting">Get started</a>'; });
   </script>
 </body>
 </html>

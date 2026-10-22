@@ -27,11 +27,13 @@
       return `<details class="pl-drop"><summary class="${active(i) ? 'is-active' : ''}">${i.label} <span aria-hidden="true">▾</span></summary>
         <div class="pl-drop-menu">${i.children.map((c) => `<a href="${c.href}" class="${c.id === page ? 'is-active' : ''}">${c.label}<span>${c.sub}</span></a>`).join('')}</div></details>`;
     }).join('');
-    const landing = page === 'landing';          // marketing page: logo, Help and Sign in only
-    header.innerHTML = `<a class="pl-logo" href="/"><span class="pl-logo-mark">◎</span> Pitchlight</a>
-      ${landing ? '' : `<nav class="pl-nav" aria-label="Main">${nav}</nav>`}<span class="pl-header-spacer"></span>`;
+    const landing = page === 'landing';          // marketing page: star logo, three anchors, Sign in + Get started
+    const star = '<svg class="pl-star" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 1.5c.7 5.6 3.6 9.3 9.5 10.5-5.9 1.2-8.8 4.9-9.5 10.5-.7-5.6-3.6-9.3-9.5-10.5C8.4 10.8 11.3 7.1 12 1.5z" fill="url(#pl-star-g)"/><defs><linearGradient id="pl-star-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f8cff"/><stop offset="1" stop-color="#a77bff"/></linearGradient></defs></svg>';
+    const landingNav = '<nav class="pl-nav ld-nav" aria-label="Main"><a href="/" class="is-active" aria-current="page">Home</a><a href="#features">Features</a><a href="#how">How it works</a></nav>';
+    header.innerHTML = `<a class="pl-logo" href="/">${landing ? star : '<span class="pl-logo-mark">◎</span>'} Pitchlight</a>
+      ${landing ? landingNav : `<nav class="pl-nav" aria-label="Main">${nav}</nav>`}<span class="pl-header-spacer"></span>`;
     if (extra) header.appendChild(extra);
-    header.insertAdjacentHTML('beforeend', `<a class="pl-help" href="/guide" style="${landing ? 'display:inline' : ''}">${landing ? 'How it works' : 'Help'}</a><span id="tester-slot"></span>`);
+    header.insertAdjacentHTML('beforeend', `${landing ? '' : '<a class="pl-help" href="/guide">Help</a>'}<span id="tester-slot"></span>`);
 
     // Only one dropdown open at a time; click elsewhere closes it.
     document.addEventListener('click', (e) => {
