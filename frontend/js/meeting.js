@@ -535,6 +535,7 @@
   /** Transcript stream health: 'recovering' / 'failed' shows a small note; 'ok' clears it. */
   function showSttStatus(speaker, state) {
     sttTrouble[speaker === 'other' ? 'other' : 'user'] = state === 'ok' ? null : state;
+    if (speaker !== 'other' && window.STTFallback) window.STTFallback.onStatus(state);
     const who = (k) => (k === 'user' ? 'your' : "the client's");
     const msgs = Object.entries(sttTrouble).filter(([, v]) => v).map(([k, v]) =>
       v === 'failed' ? `Lost ${who(k)} transcript — check the connection.` : `Re-syncing ${who(k)} transcript…`);
@@ -1644,6 +1645,7 @@
 
     ws = new WebSocket(url.toString());
     ws.binaryType = 'arraybuffer';
+    window.STTFallback?.init((m) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); });
     ws.onmessage = onMessage;
     ws.onopen = async () => {
       active = true;
@@ -1670,6 +1672,7 @@
     };
     ws.onerror = () => { statusEl.textContent = 'Connection problem'; };
     ws.onclose = () => {
+      window.STTFallback?.stop();
       if (active) {
         // Closed by the server mid-meeting (limit, error). Results may still be saved.
         stopCapture();

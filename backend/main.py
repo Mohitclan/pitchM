@@ -3295,6 +3295,12 @@ async def _upstream(
                         continue
                     if msg_type == "interruption" and state.session_kind == "meeting":
                         _record_interruption(state, payload_json.get("overlap_s"))
+                    if msg_type == "browser_transcript":
+                        # Backup for the presenter's words while the server transcriber is down (see stt-fallback.js).
+                        stt = state.user_stt
+                        if stt is None or getattr(stt, "failed", False) or not getattr(stt, "connected", True):
+                            _stt_callback(state, "user")(str(payload_json.get("text") or "")[:600])
+                        continue
                     if msg_type == "talk_time" and state.session_kind == "meeting":
                         _record_talk_time(state, payload_json)
                     if msg_type == "pitch" and state.session_kind == "practice":

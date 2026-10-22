@@ -594,6 +594,7 @@ async function startSession() {
   // 3. Connect WebSocket
   ws = new WebSocket(buildWsUrl(sessionCfg));
   ws.binaryType = 'arraybuffer';   // receive binary frames as ArrayBuffer (not Blob)
+  window.STTFallback?.init((m) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); });
 
   // 4. Setup overlay canvas for real-time AI drawing
   if (overlayCanvas) {
@@ -641,6 +642,7 @@ async function startSession() {
   };
 
   ws.onclose = () => {
+    window.STTFallback?.stop();
     if (sessionActive) {
       // Server closed mid-session (rate limit, error, timeout).
       stopSession();
@@ -1039,6 +1041,10 @@ function handleServerMessage(event) {
           updateSlideUploadStatus(`Server reports ${msg.total_slides} cached slides. Upload PDF in this tab to display them.`);
         }
       }
+      break;
+
+    case 'stt_status':
+      if (msg.speaker !== 'other') window.STTFallback?.onStatus(msg.state);
       break;
 
     case 'transcript':
