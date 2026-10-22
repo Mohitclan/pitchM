@@ -619,3 +619,17 @@ Goal: fewer buttons and sections per screen, one look and one navigation everywh
   question got the setup answer). `_prepared_answer` now needs ≥3 shared words (or all) and ≥60%. 132 tests.
 - Not done (by decision): backend `main.py` router split; splitting `app.js` (3.8k lines) / `meeting.js` (1.8k) into
   modules, which needs a careful pass because of shared closure state.
+
+## 2026-10-26 — Landing hero film
+- **Hero** (`landing.html`, `css/landing.css`): dark hero with a silent 12 s looping film of the real flow (a client asks
+  about price → the notch drops in → a "Say this" answer from the company hub → the script advances). Copy on the left,
+  film behind on desktop; on phones the film is a 16:9 block under the copy. Poster (`media/hero-poster.jpg`) is in
+  the page and preloaded; the video loads after first paint (`js/landing.js`): mobile 540p MP4, desktop WebM (VP9) with
+  MP4 fallback. Poster only for reduced motion, Save-Data or 2G/3G. Pauses when off screen or the tab is hidden.
+- **Film source**: `video/hero/hero.html` (a function of time) rendered with `node video/hero/render.mjs`
+  (Playwright frames → FFmpeg, ~10 min). Outputs `frontend/media/hero.mp4` (1.2 MB), `hero.webm`, `hero-mobile.mp4`,
+  `hero-poster.jpg`. Demo content only (Northwind Dental / Priya / Billing Hub); no AI call is made.
+- **GSAP 3.12.5 + ScrollTrigger** self-hosted in `frontend/vendor/` (free standard licence), loaded only on the landing
+  page (`js/landing-motion.js`): staggered hero entrance, film drift and copy fade on scroll, one-time reveals for
+  sections. Content is visible without JS; `.js-anim` hides it only when motion is allowed and removes itself after 4 s
+  if the motion script did not start.

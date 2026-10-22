@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pitchlight hero film</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --night:#060912; --blue:#2f55ff; --violet:#8b5cf6; --teal:#14b8a6; --ink:#eef1fb; --mut:#9aa4c0; --font-d:'Bricolage Grotesque',system-ui,sans-serif; --font-b:'Manrope',system-ui,sans-serif; --font-m:'IBM Plex Mono',ui-monospace,monospace; }
+  html,body{margin:0;background:#000}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--night);font-family:var(--font-b);color:var(--ink)}
+  .blob{position:absolute;border-radius:50%;filter:blur(120px);will-change:transform}
+  #b1{width:900px;height:900px;background:var(--blue);opacity:.42}
+  #b2{width:760px;height:760px;background:var(--violet);opacity:.36}
+  #b3{width:620px;height:620px;background:var(--teal);opacity:.22}
+  #grain{position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay}
+  #vig{position:absolute;inset:0;background:radial-gradient(ellipse at 66% 50%,rgba(6,9,18,0) 30%,rgba(6,9,18,.72) 100%)}
+  .ring{position:absolute;left:1240px;top:540px;width:300px;height:300px;margin:-150px 0 0 -150px;border-radius:50%;border:2px solid rgba(147,170,255,.7);box-shadow:0 0 60px rgba(79,110,255,.55),inset 0 0 60px rgba(79,110,255,.35);opacity:0}
+  #world{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:1240px 540px;will-change:transform}
+  #win{position:absolute;left:760px;top:250px;width:1000px;height:600px;border-radius:26px;background:#0d1322;box-shadow:0 60px 140px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.09),0 0 120px rgba(79,110,255,.25);overflow:hidden;opacity:0;transform-origin:50% 50%}
+  .bar{height:50px;display:flex;align-items:center;gap:9px;padding:0 20px;background:#141b2e;border-bottom:1px solid rgba(255,255,255,.07);font-size:16px;font-weight:700;color:var(--mut)}
+  .bar i{width:13px;height:13px;border-radius:50%;background:#2a3350}.bar span{margin-left:12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px;height:534px;box-sizing:border-box}
+  .tile{position:relative;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-size:17px;font-weight:700;color:#cbd2e6}
+  .tile b{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:44px;color:#fff;font-family:var(--font-d)}
+  #t1{background:linear-gradient(160deg,#262f4c,#192038)}#t1 b{background:linear-gradient(135deg,#8b5cf6,#4f46e5)}
+  #t2{background:linear-gradient(160deg,#1c3a3d,#142a2f)}#t2 b{background:linear-gradient(135deg,#14b8a6,#0284c7);font-size:30px}
+  .talk{position:absolute;inset:-5px;border-radius:22px;border:3px solid rgba(139,92,246,.9);opacity:0;box-shadow:0 0 34px rgba(139,92,246,.55)}
+  #cap{position:absolute;left:34px;bottom:40px;width:420px;box-sizing:border-box;padding:16px 20px;border-radius:16px;background:#fff;color:#0d1117;font-size:21px;font-weight:700;line-height:1.4;box-shadow:0 14px 36px rgba(0,0,0,.4);opacity:0;min-height:30px;line-height:1.35}
+  #notch{position:absolute;left:1070px;top:178px;display:inline-flex;align-items:center;gap:14px;padding:14px 26px;border-radius:999px;background:#05070d;border:1px solid rgba(255,255,255,.12);font-size:20px;font-weight:700;white-space:nowrap;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 40px rgba(79,110,255,.3);opacity:0}
+  #notch .d{width:13px;height:13px;border-radius:50%;background:#34d399;box-shadow:0 0 0 7px rgba(52,211,153,.22)}
+  #notch em{font-style:normal;font-family:var(--font-m);font-size:17px;color:#93c5fd}
+  #panel{position:absolute;left:1260px;top:300px;width:520px;padding:22px;border-radius:28px;background:#0a0e1a;box-shadow:0 50px 120px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.1),0 0 100px rgba(124,92,255,.28);opacity:0;font-size:18px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;font-size:15px;font-weight:800;color:var(--mut)}.tabs span{padding:7px 15px;border-radius:999px}.tabs .on{background:rgba(255,255,255,.12);color:#fff}.tabs b{color:#93c5fd}
+  .say{padding:16px 18px;border-radius:18px;background:rgba(147,197,253,.13);border-left:4px solid #93c5fd;font-size:22px;font-weight:600;line-height:1.5;min-height:190px;box-sizing:border-box}
+  .say small,.scr small{display:block;font-size:13px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#93c5fd;margin-bottom:6px}
+  .say b{color:#fff;background:rgba(147,197,253,.28);padding:0 6px;border-radius:6px}
+  .src{display:inline-block;margin-top:14px;padding:7px 14px;border-radius:999px;font-size:15px;font-weight:700;color:#a7f3d0;background:rgba(52,211,153,.14);opacity:0}
+  .hints{margin:18px 0 0;padding:0;list-style:none;display:grid;gap:10px}
+  .hints li{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:700;color:#d6dcf2;opacity:0}
+  .hints li::before{content:'';width:22px;height:22px;border-radius:50%;border:2px solid #34d399;box-sizing:border-box;flex:none}
+  .hints li.ok::before{background:#34d399 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23062' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat}
+  .scr{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1)}
+  .scr p{margin:3px 0;padding:7px 12px;border-radius:10px;font-size:17px;color:var(--mut);line-height:1.35}
+  .scr p.cur{color:#fff;font-weight:800;background:rgba(147,197,253,.16);box-shadow:inset 4px 0 0 #93c5fd}
+  .scr p.done{text-decoration:line-through;opacity:.45}
+  .pbar{height:6px;border-radius:6px;background:rgba(255,255,255,.1);margin:10px 0 6px;overflow:hidden}.pbar i{display:block;height:100%;background:linear-gradient(90deg,#60a5fa,#a78bfa);width:60%}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="blob" id="b1"></div><div class="blob" id="b2"></div><div class="blob" id="b3"></div>
+  <div class="ring" id="r1"></div><div class="ring" id="r2"></div>
+  <div id="world">
+    <div id="win">
+      <div class="bar"><i></i><i></i><i></i><span>Northwind Dental · Google Meet</span></div>
+      <div class="grid">
+        <div class="tile" id="t1"><b>P</b>Priya Sharma<div class="talk" id="talk"></div></div>
+        <div class="tile" id="t2"><b>You</b>Camera on</div>
+      </div>
+      <div id="cap"></div>
+    </div>
+    <div id="notch"><span class="d"></span><span id="ntxt">Listening · 3/5 points</span><em id="ntime">04:12</em></div>
+    <div id="panel">
+      <div class="tabs"><span class="on">Answers</span><span>Questions <b>3</b></span><span>Script</span></div>
+      <div class="say"><small>Say this</small><span id="say"></span></div>
+      <span class="src" id="src">From the company hub · Pricing and FAQ</span>
+      <ul class="hints"><li id="h1">Confirm 49 dollars per clinic</li><li id="h2">No setup fee for 10+ clinics</li><li id="h3">Offer the free 30-day pilot</li></ul>
+      <div class="scr"><small id="scrt">Your script · 62% covered</small><div class="pbar"><i id="pb"></i></div>
+        <p class="done" id="s1">I will show you how Billing Hub puts every payment in one dashboard.</p>
+        <p class="cur" id="s2">Today your team tracks payments in spreadsheets.</p>
+        <p id="s3">Month end close takes about six days.</p></div>
+    </div>
+  </div>
+  <div id="vig"></div>
+  <svg id="grain" width="1920" height="1080"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
+</div>
+<script>
+const $=id=>document.getElementById(id), TAU=Math.PI*2, D=12;
+const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const pr=(t,a,b)=>cl((t-a)/(b-a));
+const eo=x=>1-Math.pow(1-x,3), eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2, eb=x=>{const c1=1.4,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+const Q='“How much does it cost per clinic, and is there a setup fee?”';
+const SAY=['Billing Hub is ','<b>49 dollars</b>',' per clinic per month, and with 22 clinics there is ','<b>no setup fee</b>','. Annual plans get two months free.'];
+function typed(parts,n){let out='',left=n;for(const p of parts){if(p.startsWith('<b>')){const tx=p.slice(3,-4);const k=Math.min(left,tx.length);if(k>0)out+='<b>'+tx.slice(0,k)+'</b>';left-=k}else{const k=Math.min(left,p.length);out+=p.slice(0,k);left-=k}if(left<=0)break}return out}
+const plain=SAY.map(p=>p.startsWith('<b>')?p.slice(3,-4):p).join('').length;
+window.seek=function(t){
+  // drifting light: whole-number cycles in 12 s so the loop is seamless
+  const a=t/D*TAU;
+  $('b1').style.transform=`translate(${300+Math.sin(a)*90}px,${-120+Math.cos(a)*70}px)`;
+  $('b2').style.transform=`translate(${1180+Math.cos(a)*110}px,${420+Math.sin(a)*80}px)`;
+  $('b3').style.transform=`translate(${820+Math.sin(a*2)*80}px,${60+Math.cos(a)*60}px)`;
+  // opening: a ring of light expands, then the call rises out of it
+  for(const [id,d] of [['r1',0],['r2',.55]]){const k=pr(t,.2+d,2.6+d);const el=$(id);el.style.opacity=k>0&&k<1?(Math.sin(k*Math.PI)*.9):0;el.style.transform=`scale(${.2+eo(k)*4.2})`}
+  // call window
+  const w=pr(t,1.4,3.4), out=pr(t,11.0,11.8);
+  const win=$('win'); win.style.opacity=eo(w)*(1-eio(out));
+  win.style.transform=`perspective(2400px) translateY(${(1-eo(w))*120+eio(out)*40}px) rotateY(${-9+eo(w)*3}deg) rotateX(${5-eo(w)*2}deg) scale(${.88+eo(w)*.12})`;
+  // client question (typed) while Priya "speaks"
+  const q=pr(t,3.0,4.6); const cap=$('cap');
+  cap.style.opacity=pr(t,2.9,3.2)*(1-pr(t,10.4,11.0)); cap.textContent=Q.slice(0,Math.floor(q*Q.length));
+  $('talk').style.opacity=(t>3&&t<4.7)?(.55+.45*Math.sin(t*10)):0;
+  // notch drops
+  const n=pr(t,4.4,5.2); const nc=$('notch');
+  nc.style.opacity=eo(n)*(1-pr(t,10.8,11.4)); nc.style.transform=`translateY(${(eb(n)-1)*0+(-90*(1-eb(n)))}px)`;
+  const sec=Math.floor(252+Math.max(0,t-4.4)); $('ntime').textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');
+  // answer panel
+  const p=pr(t,5.0,6.0); const pn=$('panel'); const po=pr(t,10.7,11.5);
+  pn.style.opacity=eo(p)*(1-eio(po)); pn.style.transform=`translateY(${(1-eo(p))*70+eio(po)*30}px) scale(${.94+eo(p)*.06})`; pn.style.filter=`blur(${(1-eo(p))*14}px)`;
+  const ty=pr(t,6.0,8.2); $('say').innerHTML=typed(SAY,Math.floor(ty*plain));
+  $('src').style.opacity=pr(t,8.2,8.6);
+  [['h1',8.5],['h2',8.9],['h3',9.3]].forEach(([id,s],i)=>{const k=pr(t,s,s+.4);const el=$(id);el.style.opacity=k;el.style.transform=`translateX(${(1-eo(k))*24}px)`;el.classList.toggle('ok',t>s+.7)});
+  // script follows the voice
+  const adv=t>9.9; $('s2').className=adv?'done':'cur'; $('s3').className=adv?'cur':''; 
+  const pct=62+Math.round(pr(t,9.9,10.4)*9); $('scrt').textContent=`Your script · ${pct}% covered`; $('pb').style.width=pct+'%';
+  // camera: slow push in, drifting right-to-left
+  const c=pr(t,1.2,10.6);
+  $('world').style.transform=`translate(${92-eio(c)*24}px,${6-eio(c)*10}px) scale(${.90+eio(c)*.08})`;
+};
+document.fonts.ready.then(()=>{window.heroReady=true});
+seek(0);
+</script>
+</body>
+</html>

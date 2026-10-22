@@ -65,3 +65,6 @@ video/out/stills/
 
 # live demo test output (generated audio + recorded sessions)
 scripts/live_test_out/
+
+# Review frames from the landing hero film
+video/out/hero-stills/
