@@ -135,6 +135,7 @@
   let otherStream = null;    // meeting tab / screen capture carrying the other side's audio
   let otherCtx = null;
   let otherWorklet = null;
+  let otherFromExt = false;  // otherStream comes from the Pitchlight Chrome extension (ext-bridge.js)
   let bubble = null;         // the bubble root element (wherever it lives)
   let nudgeTimer = null;
   let activeLine = null;     // { who: 'you' | 'them', el }
@@ -1584,6 +1585,11 @@
 
   /** Other participant's audio (meeting tab / system audio) → levelled → server. */
   async function startOtherAudio() {
+    if (!otherStream && window.PLExt?.state.capturing) {
+      otherStream = await window.PLExt.openStream();
+      otherFromExt = true;
+      window.PLExt.meetingStarted();
+    }
     if (!otherStream || !otherStream.getAudioTracks().length) return;
     otherCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE });
     otherWorklet = await window.PMAudio.createLeveler(otherCtx, otherStream, (chunk) => {
@@ -1707,6 +1713,7 @@
     if (otherCtx) { otherCtx.close().catch(() => {}); otherCtx = null; }
     if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
     if (otherStream) { otherStream.getTracks().forEach((t) => t.stop()); otherStream = null; }
+    if (otherFromExt) { window.PLExt?.meetingEnded(); otherFromExt = false; }   // the extension stops listening too
     videoEl.srcObject = null;
     document.title = 'Pitchlight — Meeting Mode';
   }
@@ -1787,6 +1794,7 @@
         return;
       }
       if (otherStream) otherStream.getTracks().forEach((t) => t.stop());
+      if (otherFromExt) { window.PLExt?.meetingEnded(); otherFromExt = false; }
       otherStream = s;
       const label = s.getVideoTracks()[0]?.label || 'meeting audio';
       otherStatusEl.textContent = `Connected: ${label} ✓ — the coach will hear the other person.`;
@@ -1801,6 +1809,36 @@
       otherStatusEl.className = 'mt-other-status';
     }
   }
+
+  /* ── Pitchlight Chrome extension: meeting audio without the share dialog ── */
+  function renderExtStatus(st) {
+    if (otherStream && !otherFromExt) return;   // a tab picked by hand wins; leave that status alone
+    if (st.capturing) {
+      const where = st.platformName && st.platformName !== st.title ? `${st.platformName} (${st.title})` : st.title;
+      otherStatusEl.textContent = `Connected through the Pitchlight extension: ${where} ✓ The coach will hear the other person.`;
+      otherStatusEl.className = 'mt-other-status ok';
+      if (!active && st.platform && [...fields.platform.options].some((o) => o.value === st.platform)) {
+        fields.platform.value = st.platform;
+      }
+    } else if (st.installed) {
+      otherStatusEl.textContent = 'Pitchlight extension ready: on your meeting tab, click the Pitchlight icon (or press Alt/Option+Shift+P).';
+      otherStatusEl.className = 'mt-other-status';
+    }
+  }
+
+  window.PLExt?.onChange((st) => {
+    renderExtStatus(st);
+    if (!active || practiceMode) return;
+    if (st.capturing && !otherStream && !otherCtx) {
+      // Started from the extension after the coach was already running: attach now.
+      startOtherAudio().then(() => {
+        if (otherStream) showNudge('Now hearing the other person too.', 'nudge');
+      }).catch((err) => console.error(err));
+    } else if (!st.capturing && otherFromExt && st.reason !== 'meeting_ended') {
+      showNudge('Meeting audio stopped. Only your voice is coached now.', 'alert');
+    }
+  });
+  if (window.PLExt) renderExtStatus(window.PLExt.state);
 
   otherBtn.addEventListener('click', chooseOtherAudio);
   clientField?.addEventListener('input', scheduleLastCall);

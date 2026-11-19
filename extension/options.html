@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pitchlight extension settings</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="options">
+  <main class="wrap">
+    <h1>Pitchlight extension</h1>
+    <p class="lede">The extension listens to the meeting tab you start it on and sends that audio to your Pitchlight
+      meeting page, so the coach hears the other person too. Your own voice still comes from the microphone in Pitchlight.</p>
+
+    <form id="form" class="card">
+      <label class="field"><span>Pitchlight server address</span>
+        <input id="server" type="url" placeholder="http://localhost:8080" required>
+        <small>Use <code>http://localhost:8080</code> for the copy running on this computer. A different address asks Chrome for permission to reach it.</small>
+      </label>
+
+      <fieldset class="field">
+        <legend>Open Pitchlight in</legend>
+        <label class="radio"><input type="radio" name="openIn" value="window"> A small window beside the meeting</label>
+        <label class="radio"><input type="radio" name="openIn" value="tab"> A new tab</label>
+      </fieldset>
+
+      <div class="row">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="button" id="test">Test connection</button>
+        <span id="status" class="status"></span>
+      </div>
+    </form>
+
+    <section class="card notes">
+      <h2>How to use it</h2>
+      <ol>
+        <li>Join your meeting in Chrome (Google Meet, Teams or Zoom on the web).</li>
+        <li>On the meeting tab, click the Pitchlight icon and press <b>Start coaching on this tab</b>, or press <kbd id="shortcut">Alt+Shift+P</kbd>.</li>
+        <li>Pitchlight opens beside the meeting. Press <b>Start meeting coach</b> there.</li>
+        <li>When you end the meeting in Pitchlight, the extension stops listening.</li>
+      </ol>
+      <p>Change the shortcut at <code>chrome://extensions/shortcuts</code>. The Zoom and Teams desktop apps aren't covered: join from the browser instead.</p>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

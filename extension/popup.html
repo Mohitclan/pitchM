@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pitchlight</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+  <header class="hd">
+    <span class="logo"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 1.5c.7 5.6 3.6 9.3 9.5 10.5-5.9 1.2-8.8 4.9-9.5 10.5-.7-5.6-3.6-9.3-9.5-10.5C8.4 10.8 11.3 7.1 12 1.5z" fill="url(#g)"/><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f8cff"/><stop offset="1" stop-color="#a77bff"/></linearGradient></defs></svg>Pitchlight</span>
+    <button id="settings" class="link" type="button">Settings</button>
+  </header>
+
+  <section class="card" id="tab-card">
+    <div class="eyebrow"><span id="live-dot" class="dot hidden"></span><span id="tab-kind">This tab</span></div>
+    <div class="tab-title" id="tab-title">…</div>
+    <div class="tab-host" id="tab-host"></div>
+  </section>
+
+  <p id="msg" class="msg hidden"></p>
+
+  <div class="actions">
+    <button id="start" class="btn primary" type="button" disabled>Start coaching on this tab</button>
+    <button id="open" class="btn hidden" type="button">Open Pitchlight</button>
+    <button id="stop" class="btn danger hidden" type="button">Stop listening</button>
+  </div>
+
+  <p id="server-line" class="server">Checking the Pitchlight server…</p>
+
+  <footer class="ft">
+    Tell the people on the call that an AI coach is transcribing it.
+    <span class="kbd-row">Shortcut on a meeting tab: <kbd id="shortcut">Alt+Shift+P</kbd></span>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

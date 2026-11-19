@@ -647,3 +647,25 @@ Goal: fewer buttons and sections per screen, one look and one navigation everywh
   The old three-step section and the hero film were replaced; `#features` keeps the six benefits.
 - **GSAP** (`js/landing-motion.js`): hero copy stagger, window then assistant panel then cards, slow drift of the
   background light, demo lifts on scroll, section reveals, steps light up in turn. Reduced motion: none of it runs.
+
+## 2026-11-19 — Chrome extension: start Pitchlight from any browser meeting
+- **`extension/`** (Manifest V3, load unpacked; guide in `extension/README.md`). On the meeting tab, the toolbar popup's
+  **Start coaching on this tab** or **Alt+Shift+P** captures that tab's audio with `chrome.tabCapture`. No share
+  dialog. An offscreen document plays it back (a captured tab is muted otherwise), downmixes and resamples it to
+  16 kHz mono PCM in 100 ms chunks. The service worker relays the chunks to the Pitchlight page through a content
+  script (`bridge.js`) and opens `/meeting` in a small window beside the call, or focuses the one already open. A red
+  ON badge shows while it listens. Settings: server address (localhost by default; other addresses ask for
+  permission at runtime, ready for the AWS subdomain) and window vs tab.
+- **Page side** (`frontend/js/ext-bridge.js`, `window.PLExt`): turns the chunks back into a MediaStream, so
+  `meeting.js` uses it like a shared tab: same leveller, meters, talk time and `0x06` frames. `meeting.js` shows
+  "Connected through the Pitchlight extension" in step 3, preselects the platform, attaches mid-meeting if the
+  extension starts later ("Now hearing the other person too."), warns when it stops ("Meeting audio stopped…") and
+  tells the extension to stop when the meeting ends. **The backend is unchanged.**
+- **Not covered:** the Zoom/Teams desktop apps (Chrome can't hear other apps). That needs a desktop app.
+- **Test:** `scripts/extension_e2e.js` (headless Chromium, fake meeting tab playing practice-client clips, throwaway
+  server on :8091 with sign-in off and no Claude key). Passes: capture with playback running, page connects,
+  ~10 frames/s of voiced audio, the other person transcribed, client question + answer hints + facts card, and End
+  meeting stops the capture. Also checked by hand: starting after the coach is running and closing the meeting tab
+  mid-call. Test-harness gotchas: Playwright's default `--mute-audio` silences the captured tab (use
+  `--disable-audio-output` instead), `--use-fake-ui-for-media-stream` breaks tab capture, and Chromium can't play
+  `.m4a`. `pytest`: 132 passed.

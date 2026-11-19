@@ -6,7 +6,7 @@ renamed. Internal identifiers deliberately keep `pitchmirror` so saved data surv
 (`pitchmirror_*`), `PITCHMIRROR_*` env vars, `data/pitchmirror.db`, the Docker service/volume names, ADK
 `APP_NAME`, `/health` service field, and the repo/folder names.
 
-Read this first in a new session. Last updated 2026-10-21. `PROGRESS.md` is the detailed change log (one section per change); this file is the summary.
+Read this first in a new session. Last updated 2026-11-19. `PROGRESS.md` is the detailed change log (one section per change); this file is the summary.
 
 ## What it is
 PitchMirror is an **AI speaking coach**. It listens while you talk, gives short measured nudges, and writes a full review afterwards.
@@ -53,6 +53,12 @@ server `script_loaded`, `script_pos`, `script_where`. Details in PROGRESS.md and
 speaks 11 pre-recorded questions into the normal meeting pipeline while a guide ticks each feature as the server fires
 it. Kit in `backend/demo_kit.py`, audio in `frontend/demo/audio/`, browser side `frontend/demo-meeting.js`
 (`window.PMBridge` in `meeting.js`), WS flag `?practice=1`. Fully isolated from real hub/documents/history stats.
+
+**Chrome extension (2026-11-19):** `extension/` (MV3, load unpacked; `extension/README.md`). On a browser meeting tab
+(Meet, Teams/Zoom web, any tab) the popup or Alt+Shift+P captures the tab's audio (`tabCapture` → offscreen doc →
+16 kHz PCM) and relays it through a content script to `/meeting`, where `frontend/js/ext-bridge.js` (`window.PLExt`)
+rebuilds a MediaStream that `meeting.js` treats like a shared tab. No backend change. Desktop Zoom/Teams apps are not
+covered. Test: `scripts/extension_e2e.js` (needs a throwaway server on :8091; see the file header).
 
 **Accounts (2026-10-22):** `AUTH_MODE=accounts` makes every person sign in (`/login`) and keeps their data private
 (`backend/auth.py`, guide in `docs/ORG_ROLLOUT.md`). Off by default; the old "Who's testing?" picker remains for a
